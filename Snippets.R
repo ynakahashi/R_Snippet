@@ -35,6 +35,32 @@ tuneRF(dat[,-8], dat[,8], doBest = TRUE)
 resRF <- randomForest(cv ~., dat, mtry = 2)
 importance(resRF)
 
+## decision tree
+library(rpart)
+Titanic.rpart <- rpart(Survived ~ Sex + Age + Class, data = tat)
+library(rpart.plot) 
+prp(Titanic.rpart, type = 2, extra = 101,
+    nn = TRUE, fallen.leaves = TRUE, faclen = 0, varlen = 0,
+    shadow.col = "grey", branch.lty = 3, cex = 1.2, split.cex = 1.2,
+    under.cex = 1.2)
+
+
+
+## Cox Propotional-Hazard
+library(MASS)
+library(survival)
+res.cox <- coxph(Surv(time, cens) ~ treat, data = gehan)
+res.fit <- survfit(res.cox)
+res.zph <- cox.zph(res.cox)
+scatter.smooth(residuals(res.cox, type="deviance"))
+scatter.smooth(residuals(res.cox))
+colnames(res.out) <- c("time", "n.risk", "n.event", "n.censor", 
+                       "surv", "cumhaz", "std_err", "upper", "lower")
+
+res.stat <- rbind(summary(res.cox)$rsq[1], summary(res.cox)$concordance[1])
+res.stat.names <- c("R_square", "Concordance_AUC")
+res.stat       <- cbind(res.stat.names, res.stat)
+
 
 ################################################################################
 ### Time-Series specific
@@ -69,5 +95,24 @@ datRF <- datLrn[, c("TARGET", unlist(predVars))]
 fit   <- randomForest(TARGET ~ ., datRF)
 imp   <- variable_importance(fit, data = datRF, vars = names(datRF)[-1])
 plot_imp(imp)
+
+## MIC
+library(minerva)
+mine(dat)$MIC
+
+## Pivot table
+library(rpivotTable)
+rpivotTable(iris, rows="Species", "100%", "40pt")
+
+
+################################################################################
+### Data wrangling
+################################################################################
+## Data expansion
+library(epitools)
+tat <- expand.table(Titanic) %>% tbl_df %>% 
+   mutate("Survived" = if_else(Survived == "Yes", 1, 0))
+rpivotTable(tat, rows = "Sex", "100%", "40pt")
+
 
 
