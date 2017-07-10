@@ -91,19 +91,20 @@ ggplot(datasaurus, aes(x = x, y = y)) +
 ## Explolatory Data Analysis via Random Forest
 library(edarf)
 library(randomForest)
-datRF <- datLrn[, c("TARGET", unlist(predVars))]
-fit   <- randomForest(TARGET ~ ., datRF)
-imp   <- variable_importance(fit, data = datRF, vars = names(datRF)[-1])
+fit   <- randomForest(Species ~ ., iris)
+imp   <- variable_importance(fit, data = iris, vars = names(iris)[-5])
 plot_imp(imp)
 
 ## MIC
 library(minerva)
-mine(dat)$MIC
+mine(iris[, -5])$MIC
 
 ## Pivot table
 library(rpivotTable)
 rpivotTable(iris, rows="Species", "100%", "40pt")
 
+## glance at data
+glimpse(iris)
 
 ################################################################################
 ### Data wrangling
