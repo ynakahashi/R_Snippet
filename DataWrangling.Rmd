@@ -1,0 +1,84 @@
+---
+title: "Data Wrangling:Transforming 1/3"
+author: "ynakahashi"
+date: "2017/7/29"
+output: html_notebook
+---
+
+### Exercise 1
+Print out the hp column using the select function.
+
+```{r cars01}
+mtcars %>% select(hp) 
+```
+
+### Exercise 2
+Print out the all but hp column using the select function.
+
+```{r cars02}
+mtcars %>% select(-hp)
+```
+
+### Exercise 3
+Print out the mpg, hp, vs, am, gear columns. Consider using the colon (:) symbol.
+
+```{r cars03}
+mtcars %>% select(mpg, hp, vs:gear)
+```
+
+### Exercise 4
+Create the object cars_m_h containing the columns mpg, hp columns but let the column names be ‘miles_per_gallon’, and ‘horse_power’ respectively.
+
+```{r cars04}
+cars_m_h <- mtcars %>% 
+   select("miles_per_gallon" = mpg, "horse_power" = hp)
+cars_m_h
+```
+
+### Exercise 5
+Change the column names of cars_m_h from ‘miles_per_gallon’, and ‘horse_power’ to ‘mpg’ and ‘hp’ respectively.
+
+```{r cars05}
+cars_m_h <- cars_m_h %>% rename("mpg" = miles_per_gallon, "hp" = horse_power)
+cars_m_h
+```
+
+### Exercise 6
+Print out a randomly half the observations of cars_m_h.
+Hint : consider using the sample_frac function
+
+```{r cars06}
+cars_m_h %>% sample_frac(0.5)
+```
+
+### Exercise 7
+Create a cars_m_h_s object, containing from 10th to 35th row of cars_m_h.
+Hint : Consider using the slice function.
+
+```{r cars07}
+cars_m_h_s <- cars_m_h %>% 
+   slice(10:35)
+cars_m_h_s
+```
+
+### Exercise 8
+Print out the cars_m_h_s object without any duplicates.
+Hint : Consider using the distinct function.
+
+```{r cars08}
+cars_m_h_s %>% distinct()
+```
+
+### Exercise 9
+Print out from cars_m_h_s object all the observations which have mpg>20 and hp>100.
+
+```{r cars09}
+cars_m_h_s %>% filter(mpg > 20, hp > 100)
+```
+
+### Exercise 10
+Select the ‘Lotus Europa’ car.
+
+```{r cars10}
+cars_m_h %>% filter(rownames(.) == "Lotus Europa")
+```
