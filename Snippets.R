@@ -5,6 +5,8 @@
 ##
 ################################################################################
 library(tidyverse)
+library(broom)
+library(gapminder)
 
 ################################################################################
 ### Machine Learning Algorithm, Analytics functions
@@ -22,20 +24,20 @@ resgn  <- glmnet(x = x, y = y, alpha = 1)
 rescv  <- cv.glmnet(x = x, y = y, alpha = 0, nfolds = 10)
 resfix <- glmnet(x, y, alpha = 0, lambda = rescv$lambda.min)
 
-## random forest by ranger
+## Random forest by ranger
 library(ranger)
 resRF <- ranger(Species ~ ., data = iris, mtry = 2, num.trees = 500, 
                 write.forest = TRUE)
 table(predict = predict(resRF, data = iris)$predictions, 
       true    = iris$Species)
 
-## random forest by randomForest
+## Random forest by randomForest
 library(randomForest)
 tuneRF(dat[,-8], dat[,8], doBest = TRUE)
 resRF <- randomForest(cv ~., dat, mtry = 2)
 importance(resRF)
 
-## decision tree
+## Decision tree
 library(rpart)
 Titanic.rpart <- rpart(Survived ~ Sex + Age + Class, data = tat)
 library(rpart.plot) 
@@ -72,7 +74,7 @@ datSTL <- stl(ts(dat$TARGET, frequency = 52),
 
 
 ################################################################################
-### Plot
+### Data visualization
 ################################################################################
 ## plot time series in single view
 plot(as.zoo(as.ts(
@@ -116,4 +118,24 @@ tat <- expand.table(Titanic) %>% tbl_df %>%
 rpivotTable(tat, rows = "Sex", "100%", "40pt")
 
 
+## Select, Rename, Filter, etc...
+
+
+
+
+################################################################################
+### Make tidy data
+################################################################################
+## lm 01
+gapminder %>%
+   group_by(country) %>%
+   do(data = lm(lifeExp ~ year, data = .) %>% tidy()) %>%
+   unnest()
+
+## lm 02
+gapminder %>%
+   split(.$country) %>%
+   map(., ~ lm(lifeExp ~ year, data = .) %>% tidy()) %>%
+   bind_rows(.id = "country") %>%
+   tbl_df()
 
