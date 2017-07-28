@@ -5,8 +5,6 @@
 ##
 ################################################################################
 library(tidyverse)
-library(broom)
-library(gapminder)
 
 ################################################################################
 ### Machine Learning Algorithm, Analytics functions
@@ -127,6 +125,8 @@ rpivotTable(tat, rows = "Sex", "100%", "40pt")
 ### Make tidy data
 ################################################################################
 ## lm 01
+library(broom)
+library(gapminder)
 gapminder %>%
    group_by(country) %>%
    do(data = lm(lifeExp ~ year, data = .) %>% tidy()) %>%
