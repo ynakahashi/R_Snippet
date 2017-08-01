@@ -1,0 +1,263 @@
+---
+title: "統計モデルの構築"
+date: 2017/7/30
+author: Yoshinobu Nakahashi
+output: html_notebook
+---
+
+#### 0. 統計モデル構築の流れ
+統計モデルの構築を目的とするデータ解析は、一般に以下の手順を踏みながら進められる。なおここでは分析用のデータマートが完成した状態であることを前提とし、目的変数の設定や各種データの結合などは扱わない。
+
+1. データの確認
+    1. 分布の確認
+        1. 欠損、異常値、外れ値、水準ごとの記録数などの確認
+    1. 変数間の関連性の確認
+        1. 目的変数との関連性
+        1. 説明変数同士の関連性
+1. 前処理
+    1. 行の処理
+        1. 異常値、欠損のある行の除外
+        1. グループ化（パネルデータ、時系列データなどの場合）
+    1. 列の処理
+        1. 丸め
+        1. 組み合わせ
+        1. 変数変換
+        1. 標準化
+1. モデル化
+    1. 交差検証
+    1. 変数選択
+1. 評価
+    1. 当てはまり
+    1. 予測
+
+サンプルデータを用いて上記の手順を実行する。
+
+#### 1. データのチェック
+まず始めにデータを読み込み、中身を確認する。
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+Work_Dir   <- "/Users/nakahashi/Desktop/GitTest/R_Snippet/"
+File_Name  <- "Data/credit_data_track2_part_A.CSV"
+Dat_Sample <- read_csv(paste0(Work_Dir, File_Name), 
+                       locale = locale(encoding = "UTF-8"))
+glimpse(Dat_Sample)
+```
+
+データは約1,000行、22列である。目的変数はacceptedとし、残りを説明変数とする。
+
+##### 1.1 分布の確認
+ある一つの変数についてその概要を知りたい時は、その分布を見ることが最も重要である。基礎統計量（平均や分散など）は多くのことを教えてくれるが、変数が従う分布によっては数値からイメージされるものと大きく異なることがある。
+
+分布の確認は数値型変数ではヒストグラム、カテゴリ型では度数分布を見るのが基本である。そこで各変数を数値型とカテゴリ型に分類する。なおデータの読み込み時に<i>readr::read_csv</i>ではなく<i>base::read.csv</i>を用いている場合、デフォルトではカテゴリ型と見なされる列はfactorとして読み込まれる。これを避けるには<i>stringsAsFactors</i>オプションを<i>FALSE</i>にしておく。
+
+```{r}
+Var_Num  <- colnames(Dat_Sample)[sapply(Dat_Sample, is_numeric)]
+Var_Char <- colnames(Dat_Sample)[sapply(Dat_Sample, is_character)]
+```
+
+数値型変数についてヒストグラムを描く。
+```{r}
+for (i in Var_Num) {
+   tmp <- Dat_Sample[, i] %>% collect() %>% .[[1]]
+   # MASS::truehist(tmp, main = i)
+   hist(tmp, freq = TRUE, main = i)
+}
+```
+
+各変数のヒストグラムを確認すると、credit_amoutには極端に高い値が少数存在しており異常値が疑われる。実際のデータ解析ではこれらの値について担当者に確認を行うが、今回は異常値として扱うものとする。
+
+またasnmにも平均から大きく乖離した値が認められる。このような値は異常値ではないとしても、パラメータの頑健性に悪影響を及ぼすことがあるため処理を加えた方が良い場合がある。今回はlogを取ることで正規分布に近づけることを考える。
+
+いくつかの変数は数値型であるにも関わらず連続的な分布となっていない。このような時には必ず数値がどのように得られたかをマスタなどから確認する必要がある。多くの場合これらの値は何らかのコード値であり数値としての意味を持たなかったり、アンケートの回答などのように大小関係としての意味しかなかったりする。各変数が<b>どのような尺度であるのか</b>確認することは極めて重要である。今回はマスタがないためこのまま連続量として扱うこととする。
+
+続いてカテゴリ型変数の確認を行う。カテゴリ型変数では度数分布表を作成するのが基本である。
+
+```{r}
+for (i in Var_Char) {
+   print(i)
+   print(table(Dat_Sample[, i], useNA = "always"))
+}
+```
+
+上記の結果を確認すると、
+
++ purposeにおいて記録数の少ない水準が存在する
++ jobにおいて記録数の少ない水準が存在する
++ foreign_workerは著しく偏っている
+
+ことがわかる。
+
+purposeのように水準の多い要因は一部の水準で記録数が少なくなることがよくある。このような場合、記録数の少ない水準をまとめて「その他」(other)にすることがある。今回のサンプルデータでは既にotherが存在するため、記録の少ない水準がotherにまとめることとする。
+
+jobでは水準数が多くないため、otherとしてまとめられるものが他にない。そのためこのまま用いることとする。
+
+foreign_workerは分布が著しく偏っており、情報の少ない変数であると言える。こういった変数は除外を検討すべきだが、今回のデータでは記録数が37とそれなりにあることからこのまま用いることとする。
+
+最後に欠損の有無を確認する。
+
+```{r}
+colSums(apply(Dat_Sample, c(1, 2), is.na))
+```
+
+欠損を含まない記録数は以下のようである。
+
+```{r}
+nrow(na.omit(Dat_Sample))
+```
+
+
+##### 1.2 変数間の関連性の確認
+
+次に各変数と目的変数(accepted)との関連性を確認する。ここで目的変数との関連性を見ておく目的は、得られた関連性（例えば相関係数）が期待したものと乖離していないかを確認することである。例えば、もし正の相関が期待されるような説明変数について負の相関が得られた場合、データになんらかの誤りが生じている可能性がある。
+
+目的変数および各説明変数が数値型かカテゴリ型によって分析内容が異なる。以下を参照せよ：
+
++ 数値型 vs 数値型　⇨　散布図
++ 数値型 vs カテゴリ型　⇨　箱ひげ図
++ カテゴリ型 vs カテゴリ型　⇨　分割表
+
+詳細は割愛する。
+
+データの確認においては目的変数との関連性だけでなく、説明変数間の関連性を把握する必要がある。回帰分析において、極端に似通った二つ以上の説明変数が同時に統計モデルに投入された場合、回帰係数が発散する現象（<i>multi-colinearity</i>、マルチコ）が生じる懸念があるためである。
+
+説明変数となりうる全ての変数の組み合わせ間で相関行列を作る必要があるため、カテゴリ型の変数についても数値型に変換する必要がある。カテゴリ型の数値型への変換方法としてよく用いられるのは<b>ダミー化</b>である。ダミー化とはカテゴリ型変数の各水準について、該当すれば1、そうでなければ0となるような0/1の変数を作成することである。なおカテゴリ型の変数の数値型への変換はダミー化だけではない。関心のある読者は<i>effect coding</i>で調べてみると良い。
+
+それでは変数間の相関行列を作成してみよう。カテゴリ変数のダミー化には<i>caret::dummyVars</i>が便利である。
+
+```{r}
+Dat_Mat_01 <- as_data_frame(predict(caret::dummyVars(~., data = Dat_Sample),
+                                    Dat_Sample))
+Dat_Cor_01 <- cor(Dat_Mat, use = "pairwise.complete")
+```
+
+dummyVarsではカテゴリ型変数の全ての水準についてダミー化するため、この行列には線形従属が生じている。水準の一つを参照列（リファレンス）とする場合には<i>model.matrix</i>が利用できる。
+
+```{r}
+Dat_Mat_02 <- model.matrix(~.-1, data = Dat_Sample)
+Dat_Cor_02 <- cor(Dat_Mat_02, use = "pairwise.complete")
+```
+
+マルチコを回避することを目的とするのであれば、見るべきは相関ではなくVIF(<i>Variance Inflation Factor</i>)である。VIFは以下のように求めることができる。ここで<i>solve</i>は<b>逆行列</b>を求めるための関数である。
+
+```{r}
+diag(solve(Dat_Cor_01))
+```
+
+しかし、上記のコマンドはエラーとなる。
+
+Rで逆行列を求めるための関数として標準では<i>solve</i>が用意されているが、特異な正方行列には一意な逆行列が存在しないため<i>solve</i>では求解できない。そのような場合でも<i>ginv</i>によって<i>Moore-Penrose</i>型の一般化逆行列を求めることができる。やってみよう。
+
+```{r}
+diag(MASS::ginv(Dat_Cor_02))
+```
+
+
+VIFの最大値は6程度であり、少し高いもののマルチコが生じるほどではないと思われる。
+
+変数間の関連性を確認する時は、相関係数などの統計量に依存しすぎないように留意せよ。ほぼ同一の統計量であってもその分布が全く異なることがある。関心のある読者は<b>アンスコムの例</b>で調べると良い。
+
+
+
+
+
+上記の結果から、
++ credit_amountは異常値を除外する
++ purposeは水準をまとめる
++ foreign_workerは除外する
++ 欠損があるデータは除外する
+といった処理を行う。
+
+
+#### 2. 前処理
+```{r}
+Dat_Sample %>% arrange(desc(credit_amount)) %>% select(credit_amount)
+```
+
+```{r}
+Dat_Ana <- Dat_Sample %>% 
+   drop_na() %>% 
+   filter(credit_amount < 17430000) %>% 
+   mutate("purpose_02" = if_else(purpose %in% c("domestic_appliances", 
+                                                "repairs",  "retraining"),
+                                 "other", purpose)) %>% 
+   select(-foreign_worker, -purpose)
+   
+```
+
+#### 3. モデル化
+
+データの前処理が完了したので、モデルを構築する。
+データを学習用と検証用に分割する。
+
+```{r}
+set.seed(123)
+Train     <- sample(1:nrow(Dat_Ana), size = nrow(Dat_Ana) * 0.8, replace = FALSE)
+Dat_Train <- Dat_Ana[rownames(Dat_Ana) %in% Train, ] 
+Dat_Test  <- Dat_Ana[!rownames(Dat_Ana) %in% Train, ] 
+```
+
+まずは標準的なロジスティック回帰。
+
+```{r}
+Res_GLM <- glm(accepted ~ ., data = Dat_Train, family = binomial(link = logit))
+Res_Step_GLM <- step(Res_GLM, direction = "both")
+Prds <- predict(Res_Step_GLM, newdata = Dat_Test)
+```
+
+```{r}
+library(pROC)
+ROC_GLM <- roc(Dat_Test$accepted, Prds)
+# 226 0.4229962   226
+AUC_GLM <- auc(ROC_GLM)
+print(AUC_GLM)
+GLM_PredictClass <- ifelse(Prds > 0.4229962, 1, 0)
+```
+
+機械学習系のアルゴリズムを用いてみる。
+アルゴリズムとしてはランダムフォレストとXgboostぐらい。
+
+```{r}
+library(caret)
+library(doParallel)
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+```
+
+```{r}
+set.seed(123)
+Res_RF <- train(
+   as.factor(accepted) ~ ., 
+   data = Dat_Train, 
+   method = "rf", 
+   tuneLength = 4,
+   preProcess = c('center', 'scale'),
+   trControl = trainControl(method = "cv")
+)
+RF_PredictClass <- predict(Res_RF, Dat_Test)
+```
+
+
+Xgboostにも挑戦。
+
+```{r}
+set.seed(1)
+Res_XB <- train(
+  as.factor(accepted) ~ ., 
+  data = Dat_Train,
+  method = "xgbLinear", 
+  preProcess = c('center', 'scale'),
+  trControl = trainControl(method = "cv"),
+  tuneLength = 4
+)
+XB_PredictClass <- predict(Res_XB, Dat_Test)
+```
+
+
+
+```{r}
+confusionMatrix(GLM_PredictClass, Dat_Test$accepted)
+confusionMatrix(RF_PredictClass, Dat_Test$accepted)
+confusionMatrix(XB_PredictClass, Dat_Test$accepted)
+``` 
