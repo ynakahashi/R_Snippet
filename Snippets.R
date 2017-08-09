@@ -22,6 +22,18 @@ resgn  <- glmnet(x = x, y = y, alpha = 1)
 rescv  <- cv.glmnet(x = x, y = y, alpha = 0, nfolds = 10)
 resfix <- glmnet(x, y, alpha = 0, lambda = rescv$lambda.min)
 
+## glmnet 03
+x <- as.matrix(iris[, -5])
+y <- model.matrix(~ iris[, 5] - 1)
+resgn  <- glmnet(x = x, y = y, alpha = 1, family = "multinomial")
+rescv  <- cv.glmnet(x = x, y = y, alpha = 1, family = "multinomial", nfolds = 10)
+resfix <- glmnet(x = x, y = y, alpha = 1, family = "multinomial",
+                 lambda = rescv$lambda.min)
+
+prd <- apply(predict(resfix, x), 1, which.max)
+table(prd, iris$Species)
+
+
 ## Random forest by ranger
 library(ranger)
 resRF <- ranger(Species ~ ., data = iris, mtry = 2, num.trees = 500, 
