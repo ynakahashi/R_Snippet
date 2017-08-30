@@ -66,9 +66,3 @@ cat(paste0("INSERT INTO rf_predictions\n",
            "         )\n",
            "      GROUP BY id\n   ) b\n",
            "      ON a.id = b.id AND a.cnt = b.cnt;\n\n"))
-
-
-
-
-
-
