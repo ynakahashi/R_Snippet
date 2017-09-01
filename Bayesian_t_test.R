@@ -19,7 +19,6 @@ Pop_01 %>%
    bind_rows(as_data_frame(Pop_02) %>% mutate("Group" = "02")) %>% 
    ggplot(aes(value, fill = Group)) +
    geom_histogram(alpha = 0.5, position = "identity") +
-   # facet_wrap(~ Group, ncol = 1) +
    theme_bw()
 
 t.test(Pop_01, Pop_02)
@@ -69,14 +68,14 @@ results <- matrix(0, nrow = N_iter, ncol = 8)
 results[1, ] <- c(pars, 0, 0, 0, 0)
 
 for (i in 2:N_iter) {
-   # for (j in 1:4) { # Gibbs Sampling
+   for (j in 1:4) { # Gibbs Sampling
       candidate <- pars
-      candidate <- candidate + rnorm(4, sd = 0.5) # Metropolis
-      # candidate[j] <- candidate[j] + rnorm(1, sd = 0.5) # Gibbs Sampling
+      # candidate <- candidate + rnorm(4, sd = 0.5) # Metropolis
+      candidate[j] <- candidate[j] + rnorm(1, sd = 0.5) # Gibbs Sampling
       ratio <- exp(posterior(candidate) - posterior(pars))
       t <- runif(1)
       if (t < ratio) { pars <- candidate }
-   # } # Gibbs Sampling
+   } # Gibbs Sampling
    results[i, ] <- c(pars, ratio, t, posterior(pars), posterior(candidate))
 }
 
@@ -88,8 +87,8 @@ plot(results[, 4])
 
 
 Res_MCMC <- results[seq(15000, N_iter, 10), ]
-apply(Res_MCMC, 2, mean)
 summary(Res_MCMC[, c(1:4)])
+apply(Res_MCMC, 2, mean)
 # sum(Res_MCMC[, 5] > Res_MCMC[, 6])
 
 
@@ -98,13 +97,10 @@ hist(Res_MCMC[, 2])
 hist(Res_MCMC[, 3])
 hist(Res_MCMC[, 4])
 
-
-hist(Res_MCMC[, 1] - Res_MCMC[, 3])
-mean(Res_MCMC[, 1] - Res_MCMC[, 3] < 0)
+par(mfrow = c(1, 1))
+hist(Res_MCMC[, 3] - Res_MCMC[, 1])
+quantile(Res_MCMC[, 1] - Res_MCMC[, 3], seq(0, 1, 0.025))
 mean(Res_MCMC[, 3] - Res_MCMC[, 1] < 0)
-
-
-
 
 
 
