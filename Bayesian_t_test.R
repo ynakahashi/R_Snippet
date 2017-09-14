@@ -102,6 +102,3 @@ hist(Res_MCMC[, 3] - Res_MCMC[, 1])
 quantile(Res_MCMC[, 1] - Res_MCMC[, 3], seq(0, 1, 0.025))
 mean(Res_MCMC[, 3] - Res_MCMC[, 1] < 0)
 
-
-
-
