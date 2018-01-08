@@ -1,0 +1,252 @@
+---
+title: "Calculate an effective frontier"
+output: html_notebook
+authour: Y.Nakahashi
+date: 2018-01-08
+---
+
+## 目的
+有効フロンティアを最適化によって求めたい．ここで<b>有効フロンティア</b>とは，リターンが所与のときにボラティリティが最小となるポートフォリオを意味する．
+また<b>リターン</b>は期待利益（ROI * 投資額）を，<b>ボラティリティ</b>は期待利益の標準誤差として表される投資リスク
+$$V = \sqrt{E(v) * C * E(v)'}$$
+である．
+また$E(v)$は期待ボラティリティのベクトル（<i>Expectations of Volatility</i>），
+$C$は相関行列，$E(v)^T$は期待ボラティリティの行ベクトルである．
+
+ここで解決すべき問題は，$V$を最小とするような投資額$X$を、所与の投資額の制限の中で求めることである．なお計算に必要となるROIや$\sigma$は既知である．
+
+## 分析の実行
+### 分析環境の準備
+#### ライブラリの読み込み
+```{r}
+library(Matrix)
+```
+#### データの読み込み
+相関行列およびROI，投資額などのデータを読み込む．
+
+```{r}
+comatnew <- read.csv("Data/newmat.csv", header = F)
+cobase   <- read.csv("Data/cobasenew.csv", header = T)
+```
+#### 正定符号行列の作成（<i>If needed</i>）
+相関行列が非正定であった場合には解が得られないため，{Matrix}の<i>nearPD</i>を用いて正定符号行列となる相関行列を作成する．
+
+```{r}
+dco.mat <- nearPD(as.matrix(comatnew), corr = TRUE)
+rcov    <- as.matrix(dco.mat$mat)
+```
+#### 相関行列を共分散行列に変換
+ポートフォリオの商品ごとの利益の標準偏差を用いて相関行列を共分散行列に変換する．
+```{r}
+rcov <- (cobase$sig %*% t(cobase$sig)) * rcov
+```
+#### 期待利益比率の設定
+```{r}
+averet <- matrix(cobase$ROIC, nrow = 1)
+```
+
+### 関数の定義
+有効フロンティアを求めるための関数を以下のように定義する．
+
+   - Objective
+      - 目標利益を設定し，リスクが最小となるポートフォリオを求める
+      - tseries::portfolio.optim関数を使って計算を行う
+   - Input
+      - asset : 投資総額
+      - target.ret : 目標利益
+      - cobase : 期待利益，投資下限・上限を含むデータフレーム
+   - Output
+      - ic.est : ポートフォリオ
+      - risk : 最小化したリスク
+
+#### 投資総額
+```{r}
+ictotal <- sum(cobase$IC)
+```
+
+関数定義（ここではボラティリティを比率により計算している，即ち$V^2 = E(r) * C * E(r)^T$ではなく，$E(r)/asset * Cov * E(r)/asset$としている．
+
+```{r}
+myport <- function(asset = ictotal, target.ret = 7000, cobase = cobase) {
+   
+	## libraryの呼び出し
+	library(tseries)
+	
+	## 目標利益の設定
+	target.return <- target.ret/asset
+
+	## 上限、下限の設定
+	rl <- cobase$Icminr
+	rh <- cobase$Icmaxr
+
+	## 期待利益
+	averet <- matrix(cobase$ROIC, nrow = 1)
+	
+	## 最適化計算（ポートフォリオの投資配分を最適化する）
+	port.sol <- portfolio.optim(x = averet, pm = target.return, covmat = rcov,
+	                            short = F, reslow = rl, reshigh = rh)
+	
+	## 投資額を抽出
+	ic.est <- port.sol$pw * asset
+	
+	## リスク
+	vol <- 
+	   t(as.vector(port.sol$pw) * asset) %*% rcov %*% as.vector(port.sol$pw) *
+	   asset
+	return(list(ic.est = ic.est, risk = sqrt(vol)))
+}
+```
+
+
+#### 投資総額を変更しながら実行してみる
+```{r}
+res1 <- myport(ictotal, 7800, cobase)
+res2 <- myport(ictotal, 8060, cobase)
+res3 <- myport(ictotal, 8320, cobase)
+res4 <- myport(ictotal, 8580, cobase)
+res5 <- myport(ictotal, 8840, cobase)
+res6 <- myport(ictotal, 9100, cobase)
+res7 <- myport(ictotal, 9360, cobase)
+res8 <- myport(ictotal, 9620, cobase)
+res9 <- myport(ictotal, 9880, cobase)
+res10 <- myport(ictotal, 10140, cobase)
+```
+
+
+## 
+
+続いて投資総額を所与とし，リターンを最小（最大）にした時のボラティリティを求める．この問題は目的関数が一次であるため線形計画のソルバで解ける．
+
+### 分析環境の準備
+
+#### libraryの読み込み
+```{r}
+library(lpSolve)
+```
+
+#### パラメータの準備
+```{r}
+f.obj <- cobase$ROIC 
+f.con <- rbind(rep(1, nrow(rcov)), diag(nrow(rcov)), diag(nrow(rcov)))
+f.dir <- c("=", rep(">=", nrow(rcov)), rep("<=", nrow(rcov)))
+f.rhs <- c(1, cobase$Icminr, cobase$Icmaxr)
+```
+
+#### 投資総額
+```{r}
+ictotal <- sum(cobase$IC)
+```
+
+### 分析の実行
+#### 利益を最小にする
+```{r}
+out.lp.min <- lp("min", f.obj, f.con, f.dir, f.rhs)
+# 返り値とボラティリティ
+sum(out.lp.min$solution * ictotal * cobase$ROIC)
+sqrt(t(ictotal*out.lp.min$solution) %*% rcov %*% (ictotal*out.lp.min$solution))
+```
+
+#### 利益を最大にする
+```{r}
+out.lp.max <- lp("max", f.obj, f.con, f.dir, f.rhs)
+sum(out.lp.max$solution * ictotal * cobase$ROIC)
+sqrt(t(ictotal*out.lp.max$solution) %*% rcov %*% (ictotal*out.lp.max$solution))
+```
+
+
+
+
+
+
+
+
+#-----------------------------------------
+## alternative solution using solve.QP
+# quadprog::solve.QP関数で計算する場合
+# 総投資額:92000、目標利益:8000としてリスクが最小となる
+# ポートフォリオを計算
+#-----------------------------------------
+pm <- 8000/92000 #目標利益率
+Dmat <- rcov #共分散
+dvec <- rep.int(0, nrow(rcov))
+a1 <- rep.int(1, nrow(rcov))
+a2 <- matrix(cobase$ROIC,nrow=1) #期待利益
+a3 <- matrix(0, nrow(rcov), nrow(rcov))
+diag(a3) <- 1
+b3 <- rep.int(0, nrow(rcov))
+Amat <- t(rbind(a1, a2, a3, a3, -a3))
+b0 <- c(1, pm, b3, cobase$Icminr, -cobase$Icmaxr)
+require(quadprog)
+#最適化計算
+res <- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 2)
+#結果出力
+res$solution*92000
+sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+
+#--------------------------
+## global minimum risk
+# 最もリスクが小さくなるポートフォリオを計算
+#--------------------------
+Dmat <- rcov
+dvec <- rep.int(0, nrow(rcov))
+a1 <- rep.int(1, nrow(rcov))
+a3 <- matrix(0, nrow(rcov), nrow(rcov))
+diag(a3) <- 1
+b3 <- rep.int(0, nrow(rcov))
+Amat <- t(rbind(a1, a3, a3, -a3))
+b0 <- c(1, b3, cobase$Icminr, -cobase$Icmaxr)
+require(quadprog)
+#最適化計算
+res <- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 1)
+#結果出力
+res$solution*92000
+sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+
+#----------------------------
+## max return given risk
+# リスクを与えて、利益が最大になるポートフォリオを計算
+# リスク:400、総投資額:87612
+#----------------------------
+require(Rsolnp)
+#リターンの計算式
+fn <- function(x)  # w' x
+{
+  z = sum(cobase$ROIC * x)
+  return(z)
+}
+
+# constraint z1: sum(x)  = 1 
+# constraint z2: risk = 400
+# 等式制約
+eqn <- function(x){ 
+  z1 = sum(x)
+#  z2 = sqrt(t(87612 * x) %*% rcov %*% (87612 * x))
+#  return(c(z1,z2))
+   return(c(z1))
+}
+#constraints <- c(1,400)
+constraints <- c(1)
+
+# constraint z1: ih <= x <= uh
+# 不等式制約
+ineq <- function(x) { 
+  z1 = x
+  return(c(z1))
+}
+
+lh <- c(cobase$Icminr)
+uh <- c(cobase$Icmaxr)
+
+#初期値の設定
+x0 <- c(cobase$Icmaxr) #rep(1/42, nrow(rcov))
+ctrl <- list(TOL=1e-10, trace=0)
+
+#最適化の計算
+sol4 <- solnp(x0, fun = fn, eqfun = eqn, eqB = constraints, ineq = ineq, ineqLB = lh, ineqUB=uh, control=ctrl)
+
+sol4$pars*87612 #利益最大化するポートフォリオ
+fn(sol4$pars*87612) #最大化した利益額
+sqrt(t(87612*sol4$pars) %*% rcov %*% (87612*sol4$pars)) #リスク
+
+##
+#myport(87612,8030,cobase)
