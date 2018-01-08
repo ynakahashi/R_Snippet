@@ -5,7 +5,7 @@ authour: Y.Nakahashi
 date: 2018-01-08
 ---
 
-## 目的
+# 目的
 有効フロンティアを最適化によって求めたい．ここで<b>有効フロンティア</b>とは，リターンが所与のときにボラティリティが最小となるポートフォリオを意味する．
 また<b>リターン</b>は期待利益（ROI * 投資額）を，<b>ボラティリティ</b>は期待利益の標準誤差として表される投資リスク
 $$V = \sqrt{E(v) * C * E(v)'}$$
@@ -15,7 +15,7 @@ $C$は相関行列，$E(v)^T$は期待ボラティリティの行ベクトルで
 
 ここで解決すべき問題は，$V$を最小とするような投資額$X$を、所与の投資額の制限の中で求めることである．なお計算に必要となるROIや$\sigma$は既知である．
 
-## 分析の実行
+## 分析1
 ### 分析環境の準備
 #### ライブラリの読み込み
 ```{r}
@@ -113,12 +113,10 @@ res10 <- myport(ictotal, 10140, cobase)
 ```
 
 
-## 
-
+## 分析2
 続いて投資総額を所与とし，リターンを最小（最大）にした時のボラティリティを求める．この問題は目的関数が一次であるため線形計画のソルバで解ける．
 
 ### 分析環境の準備
-
 #### libraryの読み込み
 ```{r}
 library(lpSolve)
@@ -154,39 +152,41 @@ sqrt(t(ictotal*out.lp.max$solution) %*% rcov %*% (ictotal*out.lp.max$solution))
 ```
 
 
+## 分析3
+{quadprog}のsolve.QP関数で計算する場合を以下に示す．
+例として総投資額が92000，目標利益を8000としてリスクが最小となるポートフォリオを計算する．
 
+### 分析環境の準備
+#### ライブラリの読み込み
+```{r}
+library(quadprog)
+library(Rsolnp)
+```
 
-
-
-
-
-#-----------------------------------------
-## alternative solution using solve.QP
-# quadprog::solve.QP関数で計算する場合
-# 総投資額:92000、目標利益:8000としてリスクが最小となる
-# ポートフォリオを計算
-#-----------------------------------------
-pm <- 8000/92000 #目標利益率
+#### パラメータの設定
+```{r}
+pm   <- 8000/92000 #目標利益率
 Dmat <- rcov #共分散
 dvec <- rep.int(0, nrow(rcov))
-a1 <- rep.int(1, nrow(rcov))
-a2 <- matrix(cobase$ROIC,nrow=1) #期待利益
-a3 <- matrix(0, nrow(rcov), nrow(rcov))
+a1   <- rep.int(1, nrow(rcov))
+a2   <- matrix(cobase$ROIC, nrow=1) #期待利益
+a3   <- matrix(0, nrow(rcov), nrow(rcov))
 diag(a3) <- 1
-b3 <- rep.int(0, nrow(rcov))
+b3   <- rep.int(0, nrow(rcov))
 Amat <- t(rbind(a1, a2, a3, a3, -a3))
-b0 <- c(1, pm, b3, cobase$Icminr, -cobase$Icmaxr)
-require(quadprog)
-#最適化計算
-res <- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 2)
-#結果出力
-res$solution*92000
-sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+b0   <- c(1, pm, b3, cobase$Icminr, -cobase$Icmaxr)
+```
 
-#--------------------------
-## global minimum risk
-# 最もリスクが小さくなるポートフォリオを計算
-#--------------------------
+### 分析の実行
+```{r}
+res  <- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 2)
+res$solution * 92000
+sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+```
+
+最もリスクが小さくなるポートフォリオを計算
+
+```{r}
 Dmat <- rcov
 dvec <- rep.int(0, nrow(rcov))
 a1 <- rep.int(1, nrow(rcov))
@@ -195,19 +195,15 @@ diag(a3) <- 1
 b3 <- rep.int(0, nrow(rcov))
 Amat <- t(rbind(a1, a3, a3, -a3))
 b0 <- c(1, b3, cobase$Icminr, -cobase$Icmaxr)
-require(quadprog)
-#最適化計算
 res <- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 1)
-#結果出力
 res$solution*92000
 sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+```
 
-#----------------------------
-## max return given risk
-# リスクを与えて、利益が最大になるポートフォリオを計算
-# リスク:400、総投資額:87612
-#----------------------------
-require(Rsolnp)
+リスクを与えて、利益が最大になるポートフォリオを計算
+リスク:400、総投資額:87612
+
+```{r}
 #リターンの計算式
 fn <- function(x)  # w' x
 {
@@ -215,6 +211,9 @@ fn <- function(x)  # w' x
   return(z)
 }
 
+```
+
+```{r}
 # constraint z1: sum(x)  = 1 
 # constraint z2: risk = 400
 # 等式制約
@@ -227,6 +226,10 @@ eqn <- function(x){
 #constraints <- c(1,400)
 constraints <- c(1)
 
+```
+
+
+```{r}
 # constraint z1: ih <= x <= uh
 # 不等式制約
 ineq <- function(x) { 
@@ -248,5 +251,6 @@ sol4$pars*87612 #利益最大化するポートフォリオ
 fn(sol4$pars*87612) #最大化した利益額
 sqrt(t(87612*sol4$pars) %*% rcov %*% (87612*sol4$pars)) #リスク
 
-##
-#myport(87612,8030,cobase)
+myport(87612,8030,cobase)
+
+```

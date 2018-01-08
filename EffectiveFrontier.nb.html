@@ -174,13 +174,12 @@ $(document).ready(function () {
 
 
 <!-- rnb-text-begin -->
-<div class="section level2">
-<h2>目的</h2>
+<div class="section level1">
+<h1>目的</h1>
 <p>有効フロンティアを最適化によって求めたい．ここで<b>有効フロンティア</b>とは，リターンが所与のときにボラティリティが最小となるポートフォリオを意味する． また<b>リターン</b>は期待利益（ROI * 投資額）を，<b>ボラティリティ</b>は期待利益の標準誤差として表される投資リスク <span class="math display">\[V = \sqrt{E(v) * C * E(v)'}\]</span> である． また<span class="math inline">\(E(v)\)</span>は期待ボラティリティのベクトル（<i>Expectations of Volatility</i>）， <span class="math inline">\(C\)</span>は相関行列，<span class="math inline">\(E(v)^T\)</span>は期待ボラティリティの行ベクトルである．</p>
 <p>ここで解決すべき問題は，<span class="math inline">\(V\)</span>を最小とするような投資額<span class="math inline">\(X\)</span>を、所与の投資額の制限の中で求めることである．なお計算に必要となるROIや<span class="math inline">\(\sigma\)</span>は既知である．</p>
-</div>
-<div class="section level2">
-<h2>分析の実行</h2>
+<div id="1" class="section level2">
+<h2>分析1</h2>
 <div class="section level3">
 <h3>分析環境の準備</h3>
 <div class="section level4">
@@ -324,8 +323,8 @@ res10 &lt;- myport(ictotal, 10140, cobase)</code></pre>
 </div>
 </div>
 </div>
-<div id="section" class="section level2">
-<h2></h2>
+<div id="2" class="section level2">
+<h2>分析2</h2>
 <p>続いて投資総額を所与とし，リターンを最小（最大）にした時のボラティリティを求める．この問題は目的関数が一次であるため線形計画のソルバで解ける．</p>
 <div id="-1" class="section level3">
 <h3>分析環境の準備</h3>
@@ -363,7 +362,7 @@ f.rhs &lt;- c(1, cobase$Icminr, cobase$Icmaxr)</code></pre>
 <!-- rnb-text-begin -->
 </div>
 </div>
-<div id="-1" class="section level3">
+<div class="section level3">
 <h3>分析の実行</h3>
 <div class="section level4">
 <h4>利益を最小にする</h4>
@@ -410,90 +409,105 @@ sum(out.lp.max$solution * ictotal * cobase$ROIC)</code></pre>
 </div>
 </div>
 </div>
-<div id="section-1" class="section level1">
-<h1>—————————————–</h1>
-<div id="alternative-solution-using-solve.qp" class="section level2">
-<h2>alternative solution using solve.QP</h2>
-</div>
-</div>
-<div id="quadprogsolve.qp" class="section level1">
-<h1>quadprog::solve.QP関数で計算する場合</h1>
-</div>
-<div id="920008000" class="section level1">
-<h1>総投資額:92000、目標利益:8000としてリスクが最小となる</h1>
-</div>
-<div class="section level1">
-<h1>ポートフォリオを計算</h1>
-</div>
-<div id="section-2" class="section level1">
-<h1>—————————————–</h1>
-<p>pm &lt;- 8000/92000 #目標利益率 Dmat &lt;- rcov #共分散 dvec &lt;- rep.int(0, nrow(rcov)) a1 &lt;- rep.int(1, nrow(rcov)) a2 &lt;- matrix(cobase<span class="math inline">\(ROIC,nrow=1) #期待利益 a3 &lt;- matrix(0, nrow(rcov), nrow(rcov)) diag(a3) &lt;- 1 b3 &lt;- rep.int(0, nrow(rcov)) Amat &lt;- t(rbind(a1, a2, a3, a3, -a3)) b0 &lt;- c(1, pm, b3, cobase\)</span>Icminr, -cobase<span class="math inline">\(Icmaxr) require(quadprog) #最適化計算 res &lt;- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 2) #結果出力 res\)</span>solution<em>92000 sqrt(t(92000</em>res<span class="math inline">\(solution) %*% rcov %*% (92000*res\)</span>solution))</p>
-</div>
-<div id="section-3" class="section level1">
-<h1>————————–</h1>
-<div id="global-minimum-risk" class="section level2">
-<h2>global minimum risk</h2>
-</div>
-</div>
-<div class="section level1">
-<h1>最もリスクが小さくなるポートフォリオを計算</h1>
-</div>
-<div id="section-4" class="section level1">
-<h1>————————–</h1>
-<p>Dmat &lt;- rcov dvec &lt;- rep.int(0, nrow(rcov)) a1 &lt;- rep.int(1, nrow(rcov)) a3 &lt;- matrix(0, nrow(rcov), nrow(rcov)) diag(a3) &lt;- 1 b3 &lt;- rep.int(0, nrow(rcov)) Amat &lt;- t(rbind(a1, a3, a3, -a3)) b0 &lt;- c(1, b3, cobase<span class="math inline">\(Icminr, -cobase\)</span>Icmaxr) require(quadprog) #最適化計算 res &lt;- solve.QP(Dmat, dvec, Amat, bvec = b0, meq = 1) #結果出力 res<span class="math inline">\(solution*92000 sqrt(t(92000*res\)</span>solution) %<em>% rcov %</em>% (92000*res$solution))</p>
-</div>
-<div id="section-5" class="section level1">
-<h1>—————————-</h1>
-<div id="max-return-given-risk" class="section level2">
-<h2>max return given risk</h2>
-</div>
-</div>
-<div class="section level1">
-<h1>リスクを与えて、利益が最大になるポートフォリオを計算</h1>
-</div>
-<div id="40087612" class="section level1">
-<h1>リスク:400、総投資額:87612</h1>
-</div>
-<div id="section-6" class="section level1">
-<h1>—————————-</h1>
-<p>require(Rsolnp) #リターンの計算式 fn &lt;- function(x) # w’ x { z = sum(cobase$ROIC * x) return(z) }</p>
-</div>
-<div id="constraint-z1-sumx-1" class="section level1">
-<h1>constraint z1: sum(x) = 1</h1>
-</div>
-<div id="constraint-z2-risk-400" class="section level1">
-<h1>constraint z2: risk = 400</h1>
-</div>
-<div class="section level1">
-<h1>等式制約</h1>
-<p>eqn &lt;- function(x){ z1 = sum(x) # z2 = sqrt(t(87612 * x) %<em>% rcov %</em>% (87612 * x)) # return(c(z1,z2)) return(c(z1)) } #constraints &lt;- c(1,400) constraints &lt;- c(1)</p>
-</div>
-<div id="constraint-z1-ih-x-uh" class="section level1">
-<h1>constraint z1: ih &lt;= x &lt;= uh</h1>
-</div>
-<div class="section level1">
-<h1>不等式制約</h1>
-<p>ineq &lt;- function(x) { z1 = x return(c(z1)) }</p>
-<p>lh &lt;- c(cobase<span class="math inline">\(Icminr) uh &lt;- c(cobase\)</span>Icmaxr)</p>
-</div>
-<div class="section level1">
-<h1>初期値の設定</h1>
-<p>x0 &lt;- c(cobase$Icmaxr) #rep(1/42, nrow(rcov)) ctrl &lt;- list(TOL=1e-10, trace=0)</p>
-</div>
-<div class="section level1">
-<h1>最適化の計算</h1>
-<p>sol4 &lt;- solnp(x0, fun = fn, eqfun = eqn, eqB = constraints, ineq = ineq, ineqLB = lh, ineqUB=uh, control=ctrl)</p>
-<p>sol4<span class="math inline">\(pars*87612 #利益最大化するポートフォリオ fn(sol4\)</span>pars<em>87612) #最大化した利益額 sqrt(t(87612</em>sol4<span class="math inline">\(pars) %*% rcov %*% (87612*sol4\)</span>pars)) #リスク</p>
-<div id="section-7" class="section level2">
-<h2></h2>
-</div>
-</div>
-<div id="myport876128030cobase" class="section level1">
-<h1>myport(87612,8030,cobase)</h1>
+<div id="3" class="section level2">
+<h2>分析3</h2>
+<p>{quadprog}のsolve.QP関数で計算する場合を以下に示す． 例として総投資額が92000，目標利益を8000としてリスクが最小となるポートフォリオを計算する．</p>
+<div id="-2" class="section level3">
+<h3>分析環境の準備</h3>
+<div id="-1" class="section level4">
+<h4>ライブラリの読み込み</h4>
 <!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGlicmFyeShSc29sbnApXG5cbmBgYCJ9 -->
+<pre class="r"><code>library(Rsolnp)
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiIGxpYnJhcnkoUnNvbG5wKSDjgafjgqjjg6njg7w6IFxuICAg4oCYUnNvbG5w4oCZIOOBqOOBhOOBhuWQjeWJjeOBruODkeODg+OCseODvOOCuOOBr+OBguOCiuOBvuOBm+OCkyBcbiJ9 -->
+<pre><code> library(Rsolnp) でエラー: 
+   ‘Rsolnp’ という名前のパッケージはありません </code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+</div>
+<div class="section level4">
+<h4>パラメータの設定</h4>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+</div>
+</div>
+<div id="-1" class="section level3">
+<h3>分析の実行</h3>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3FydCh0KDkyMDAwKnJlcyRzb2x1dGlvbikgJSolIHJjb3YgJSolICg5MjAwMCpyZXMkc29sdXRpb24pKVxuXG5gYGAifQ== -->
+<pre class="r"><code>sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgWywxXVxuWzEsXSAxMzkyLjM1NFxuIn0= -->
+<pre><code>         [,1]
+[1,] 1392.354</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>最もリスクが小さくなるポートフォリオを計算</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3FydCh0KDkyMDAwKnJlcyRzb2x1dGlvbikgJSolIHJjb3YgJSolICg5MjAwMCpyZXMkc29sdXRpb24pKVxuXG5gYGAifQ== -->
+<pre class="r"><code>sqrt(t(92000*res$solution) %*% rcov %*% (92000*res$solution))
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgWywxXVxuWzEsXSA2NjMuNTM1OVxuIn0= -->
+<pre><code>         [,1]
+[1,] 663.5359</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>リスクを与えて、利益が最大になるポートフォリオを計算 リスク:400、総投資額:87612</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubXlwb3J0KDg3NjEyLDgwMzAsY29iYXNlKVxuXG5gYGAifQ== -->
+<pre class="r"><code>myport(87612,8030,cobase)
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiXG4gICAg4oCYdHNlcmllc+KAmSB2ZXJzaW9uOiAwLjEwLTQyXG5cbiAgICDigJh0c2VyaWVz4oCZIGlzIGEgcGFja2FnZSBmb3IgdGltZSBzZXJpZXMgYW5hbHlzaXMgYW5kXG4gICAgY29tcHV0YXRpb25hbCBmaW5hbmNlLlxuXG4gICAgU2VlIOKAmGxpYnJhcnkoaGVscD1cInRzZXJpZXNcIinigJkgZm9yIGRldGFpbHMuXG4ifQ== -->
+<pre><code>
+    ‘tseries’ version: 0.10-42
+
+    ‘tseries’ is a package for time series analysis and
+    computational finance.
+
+    See ‘library(help=&quot;tseries&quot;)’ for details.</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiJGljLmVzdFxuIFsxXSAgIDM4Mi4yNDM3MDkgICAyNzYuOTEwNTE3ICAgMjExLjY1OTI5MCAgIDEzMy41OTk1MzkgICAxNjQuNjM5NDE5XG4gWzZdICAgMzgwLjIyMzcyNyAgIDM2MC44NTg3NTkgIDEwNDkuODQ2NzExICAgIDc5LjU4NDcyNiAgNTY2NC43NDUwNDdcblsxMV0gIDI0MzMuMzg3OTkyICA3ODc1LjM0OTcyNCAgIDcxNS42Mzc1OTUgICAzMTQuMzE2NDYxICA1MDI2LjMzMjg1NlxuWzE2XSAgMTQxMi42NjUxNzUgMjAzOTIuNjQwMTI0ICA1ODEyLjc1OTQ1OCAgODcxNS4yNjMxODkgICAyMTkuODQ3NzcwXG5bMjFdICAgMzgxLjk0Mjg0OSAgICAgNy42OTk5NzMgIDEwNzYuNDgxMzcyICAxMjM0LjAzNzYyNCAgMTA0Ni43MjYwNTlcblsyNl0gICA2MTYuNjQwNDE2ICAgMTgxLjUzNzY3MSAgIDE2OS4yNTQzODEgIDc3ODcuMTI2MDE3ICAyMDUyLjE2NDQ2N1xuWzMxXSAgODA3NS45OTY1MzYgICA0NzQuNDU1MjUxICAxMDk4LjgxMTY0MSAgMTc4Ni42MTM5NTVcblxuJHJpc2tcbiAgICAgICAgIFssMV1cblsxLF0gODAxLjEwNTZcbiJ9 -->
+<pre><code>$ic.est
+ [1]   382.243709   276.910517   211.659290   133.599539   164.639419
+ [6]   380.223727   360.858759  1049.846711    79.584726  5664.745047
+[11]  2433.387992  7875.349724   715.637595   314.316461  5026.332856
+[16]  1412.665175 20392.640124  5812.759458  8715.263189   219.847770
+[21]   381.942849     7.699973  1076.481372  1234.037624  1046.726059
+[26]   616.640416   181.537671   169.254381  7787.126017  2052.164467
+[31]  8075.996536   474.455251  1098.811641  1786.613955
+
+$risk
+         [,1]
+[1,] 801.1056</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+</div>
+</div>
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiQ2FsY3VsYXRlIGFuIGVmZmVjdGl2ZSBmcm9udGllciIKb3V0cHV0OiBodG1sX25vdGVib29rCmF1dGhvdXI6IFkuTmFrYWhhc2hpCmRhdGU6IDIwMTgtMDEtMDgKLS0tCgojIyDnm67nmoQK5pyJ5Yq544OV44Ot44Oz44OG44Kj44Ki44KS5pyA6YGp5YyW44Gr44KI44Gj44Gm5rGC44KB44Gf44GE77yO44GT44GT44GnPGI+5pyJ5Yq544OV44Ot44Oz44OG44Kj44KiPC9iPuOBqOOBr++8jOODquOCv+ODvOODs+OBjOaJgOS4juOBruOBqOOBjeOBq+ODnOODqeODhuOCo+ODquODhuOCo+OBjOacgOWwj+OBqOOBquOCi+ODneODvOODiOODleOCqeODquOCquOCkuaEj+WRs+OBmeOCi++8jgrjgb7jgZ88Yj7jg6rjgr/jg7zjg7M8L2I+44Gv5pyf5b6F5Yip55uK77yIUk9JICog5oqV6LOH6aGN77yJ44KS77yMPGI+44Oc44Op44OG44Kj44Oq44OG44KjPC9iPuOBr+acn+W+heWIqeebiuOBruaomea6luiqpOW3ruOBqOOBl+OBpuihqOOBleOCjOOCi+aKleizh+ODquOCueOCrwokJFYgPSBcc3FydHtFKHYpICogQyAqIEUodiknfSQkCuOBp+OBguOCi++8jgrjgb7jgZ8kRSh2KSTjga/mnJ/lvoXjg5zjg6njg4bjgqPjg6rjg4bjgqPjga7jg5njgq/jg4jjg6vvvIg8aT5FeHBlY3RhdGlvbnMgb2YgVm9sYXRpbGl0eTwvaT7vvInvvIwKJEMk44Gv55u46Zai6KGM5YiX77yMJEUodileVCTjga/mnJ/lvoXjg5zjg6njg4bjgqPjg6rjg4bjgqPjga7ooYzjg5njgq/jg4jjg6vjgafjgYLjgovvvI4KCuOBk+OBk+OBp+ino+axuuOBmeOBueOBjeWVj+mhjOOBr++8jCRWJOOCkuacgOWwj+OBqOOBmeOCi+OCiOOBhuOBquaKleizh+mhjSRYJOOCkuOAgeaJgOS4juOBruaKleizh+mhjeOBruWItumZkOOBruS4reOBp+axguOCgeOCi+OBk+OBqOOBp+OBguOCi++8juOBquOBiuioiOeul+OBq+W/heimgeOBqOOBquOCi1JPSeOChCRcc2lnbWEk44Gv5pei55+l44Gn44GC44KL77yOCgojIyDliIbmnpDjga7lrp/ooYwKIyMjIOWIhuaekOeSsOWig+OBrua6luWCmQojIyMjIOODqeOCpOODluODqeODquOBruiqreOBv+i+vOOBvwpgYGB7cn0KbGlicmFyeShNYXRyaXgpCmBgYAojIyMjIOODh+ODvOOCv+OBruiqreOBv+i+vOOBvwrnm7jplqLooYzliJfjgYrjgojjgbNST0nvvIzmipXos4fpoY3jgarjganjga7jg4fjg7zjgr/jgpLoqq3jgb/ovrzjgoDvvI4KCmBgYHtyfQpjb21hdG5ldyA8LSByZWFkLmNzdigiRGF0YS9uZXdtYXQuY3N2IiwgaGVhZGVyID0gRikKY29iYXNlICAgPC0gcmVhZC5jc3YoIkRhdGEvY29iYXNlbmV3LmNzdiIsIGhlYWRlciA9IFQpCmBgYAojIyMjIOato+WumuespuWPt+ihjOWIl+OBruS9nOaIkO+8iDxpPklmIG5lZWRlZDwvaT7vvIkK55u46Zai6KGM5YiX44GM6Z2e5q2j5a6a44Gn44GC44Gj44Gf5aC05ZCI44Gr44Gv6Kej44GM5b6X44KJ44KM44Gq44GE44Gf44KB77yMe01hdHJpeH3jga48aT5uZWFyUEQ8L2k+44KS55So44GE44Gm5q2j5a6a56ym5Y+36KGM5YiX44Go44Gq44KL55u46Zai6KGM5YiX44KS5L2c5oiQ44GZ44KL77yOCgpgYGB7cn0KZGNvLm1hdCA8LSBuZWFyUEQoYXMubWF0cml4KGNvbWF0bmV3KSwgY29yciA9IFRSVUUpCnJjb3YgICAgPC0gYXMubWF0cml4KGRjby5tYXQkbWF0KQpgYGAKIyMjIyDnm7jplqLooYzliJfjgpLlhbHliIbmlaPooYzliJfjgavlpInmj5sK44Od44O844OI44OV44Kp44Oq44Kq44Gu5ZWG5ZOB44GU44Go44Gu5Yip55uK44Gu5qiZ5rqW5YGP5beu44KS55So44GE44Gm55u46Zai6KGM5YiX44KS5YWx5YiG5pWj6KGM5YiX44Gr5aSJ5o+b44GZ44KL77yOCmBgYHtyfQpyY292IDwtIChjb2Jhc2Ukc2lnICUqJSB0KGNvYmFzZSRzaWcpKSAqIHJjb3YKYGBgCiMjIyMg5pyf5b6F5Yip55uK5q+U546H44Gu6Kit5a6aCmBgYHtyfQphdmVyZXQgPC0gbWF0cml4KGNvYmFzZSRST0lDLCBucm93ID0gMSkKYGBgCgojIyMg6Zai5pWw44Gu5a6a576pCuacieWKueODleODreODs+ODhuOCo+OCouOCkuaxguOCgeOCi+OBn+OCgeOBrumWouaVsOOCkuS7peS4i+OBruOCiOOBhuOBq+Wumue+qeOBmeOCi++8jgoKICAgLSBPYmplY3RpdmUKICAgICAgLSDnm67mqJnliKnnm4rjgpLoqK3lrprjgZfvvIzjg6rjgrnjgq/jgYzmnIDlsI/jgajjgarjgovjg53jg7zjg4jjg5Xjgqnjg6rjgqrjgpLmsYLjgoHjgosKICAgICAgLSB0c2VyaWVzOjpwb3J0Zm9saW8ub3B0aW3plqLmlbDjgpLkvb/jgaPjgaboqIjnrpfjgpLooYzjgYYKICAgLSBJbnB1dAogICAgICAtIGFzc2V0IDog5oqV6LOH57eP6aGNCiAgICAgIC0gdGFyZ2V0LnJldCA6IOebruaomeWIqeebigogICAgICAtIGNvYmFzZSA6IOacn+W+heWIqeebiu+8jOaKleizh+S4i+mZkOODu+S4iumZkOOCkuWQq+OCgOODh+ODvOOCv+ODleODrOODvOODoAogICAtIE91dHB1dAogICAgICAtIGljLmVzdCA6IOODneODvOODiOODleOCqeODquOCqgogICAgICAtIHJpc2sgOiDmnIDlsI/ljJbjgZfjgZ/jg6rjgrnjgq8KCiMjIyMg5oqV6LOH57eP6aGNCmBgYHtyfQppY3RvdGFsIDwtIHN1bShjb2Jhc2UkSUMpCmBgYAoK6Zai5pWw5a6a576p77yI44GT44GT44Gn44Gv44Oc44Op44OG44Kj44Oq44OG44Kj44KS5q+U546H44Gr44KI44KK6KiI566X44GX44Gm44GE44KL77yM5Y2z44GhJFZeMiA9IEUocikgKiBDICogRShyKV5UJOOBp+OBr+OBquOBj++8jCRFKHIpL2Fzc2V0ICogQ292ICogRShyKS9hc3NldCTjgajjgZfjgabjgYTjgovvvI4KCmBgYHtyfQpteXBvcnQgPC0gZnVuY3Rpb24oYXNzZXQgPSBpY3RvdGFsLCB0YXJnZXQucmV0ID0gNzAwMCwgY29iYXNlID0gY29iYXNlKSB7CiAgIAoJIyMgbGlicmFyeeOBruWRvOOBs+WHuuOBlwoJbGlicmFyeSh0c2VyaWVzKQoJCgkjIyDnm67mqJnliKnnm4rjga7oqK3lrpoKCXRhcmdldC5yZXR1cm4gPC0gdGFyZ2V0LnJldC9hc3NldAoKCSMjIOS4iumZkOOAgeS4i+mZkOOBruioreWumgoJcmwgPC0gY29iYXNlJEljbWlucgoJcmggPC0gY29iYXNlJEljbWF4cgoKCSMjIOacn+W+heWIqeebigoJYXZlcmV0IDwtIG1hdHJpeChjb2Jhc2UkUk9JQywgbnJvdyA9IDEpCgkKCSMjIOacgOmBqeWMluioiOeul++8iOODneODvOODiOODleOCqeODquOCquOBruaKleizh+mFjeWIhuOCkuacgOmBqeWMluOBmeOCi++8iQoJcG9ydC5zb2wgPC0gcG9ydGZvbGlvLm9wdGltKHggPSBhdmVyZXQsIHBtID0gdGFyZ2V0LnJldHVybiwgY292bWF0ID0gcmNvdiwKCSAgICAgICAgICAgICAgICAgICAgICAgICAgICBzaG9ydCA9IEYsIHJlc2xvdyA9IHJsLCByZXNoaWdoID0gcmgpCgkKCSMjIOaKleizh+mhjeOCkuaKveWHugoJaWMuZXN0IDwtIHBvcnQuc29sJHB3ICogYXNzZXQKCQoJIyMg44Oq44K544KvCgl2b2wgPC0gCgkgICB0KGFzLnZlY3Rvcihwb3J0LnNvbCRwdykgKiBhc3NldCkgJSolIHJjb3YgJSolIGFzLnZlY3Rvcihwb3J0LnNvbCRwdykgKgoJICAgYXNzZXQKCXJldHVybihsaXN0KGljLmVzdCA9IGljLmVzdCwgcmlzayA9IHNxcnQodm9sKSkpCn0KYGBgCgoKIyMjIyDmipXos4fnt4/poY3jgpLlpInmm7TjgZfjgarjgYzjgonlrp/ooYzjgZfjgabjgb/jgosKYGBge3J9CnJlczEgPC0gbXlwb3J0KGljdG90YWwsIDc4MDAsIGNvYmFzZSkKcmVzMiA8LSBteXBvcnQoaWN0b3RhbCwgODA2MCwgY29iYXNlKQpyZXMzIDwtIG15cG9ydChpY3RvdGFsLCA4MzIwLCBjb2Jhc2UpCnJlczQgPC0gbXlwb3J0KGljdG90YWwsIDg1ODAsIGNvYmFzZSkKcmVzNSA8LSBteXBvcnQoaWN0b3RhbCwgODg0MCwgY29iYXNlKQpyZXM2IDwtIG15cG9ydChpY3RvdGFsLCA5MTAwLCBjb2Jhc2UpCnJlczcgPC0gbXlwb3J0KGljdG90YWwsIDkzNjAsIGNvYmFzZSkKcmVzOCA8LSBteXBvcnQoaWN0b3RhbCwgOTYyMCwgY29iYXNlKQpyZXM5IDwtIG15cG9ydChpY3RvdGFsLCA5ODgwLCBjb2Jhc2UpCnJlczEwIDwtIG15cG9ydChpY3RvdGFsLCAxMDE0MCwgY29iYXNlKQpgYGAKCgojIyAKCue2muOBhOOBpuaKleizh+e3j+mhjeOCkuaJgOS4juOBqOOBl++8jOODquOCv+ODvOODs+OCkuacgOWwj++8iOacgOWkp++8ieOBq+OBl+OBn+aZguOBruODnOODqeODhuOCo+ODquODhuOCo+OCkuaxguOCgeOCi++8juOBk+OBruWVj+mhjOOBr+ebrueahOmWouaVsOOBjOS4gOasoeOBp+OBguOCi+OBn+OCgee3muW9ouioiOeUu+OBruOCveODq+ODkOOBp+ino+OBkeOCi++8jgoKIyMjIOWIhuaekOeSsOWig+OBrua6luWCmQoKIyMjIyBsaWJyYXJ544Gu6Kqt44G/6L6844G/CmBgYHtyfQpsaWJyYXJ5KGxwU29sdmUpCmBgYAoKIyMjIyDjg5Hjg6njg6Hjg7zjgr/jga7mupblgpkKYGBge3J9CmYub2JqIDwtIGNvYmFzZSRST0lDIApmLmNvbiA8LSByYmluZChyZXAoMSwgbnJvdyhyY292KSksIGRpYWcobnJvdyhyY292KSksIGRpYWcobnJvdyhyY292KSkpCmYuZGlyIDwtIGMoIj0iLCByZXAoIj49IiwgbnJvdyhyY292KSksIHJlcCgiPD0iLCBucm93KHJjb3YpKSkKZi5yaHMgPC0gYygxLCBjb2Jhc2UkSWNtaW5yLCBjb2Jhc2UkSWNtYXhyKQpgYGAKCiMjIyMg5oqV6LOH57eP6aGNCmBgYHtyfQppY3RvdGFsIDwtIHN1bShjb2Jhc2UkSUMpCmBgYAoKIyMjIOWIhuaekOOBruWun+ihjAojIyMjIOWIqeebiuOCkuacgOWwj+OBq+OBmeOCiwpgYGB7cn0Kb3V0LmxwLm1pbiA8LSBscCgibWluIiwgZi5vYmosIGYuY29uLCBmLmRpciwgZi5yaHMpCiMg6L+U44KK5YCk44Go44Oc44Op44OG44Kj44Oq44OG44KjCnN1bShvdXQubHAubWluJHNvbHV0aW9uICogaWN0b3RhbCAqIGNvYmFzZSRST0lDKQpzcXJ0KHQoaWN0b3RhbCpvdXQubHAubWluJHNvbHV0aW9uKSAlKiUgcmNvdiAlKiUgKGljdG90YWwqb3V0LmxwLm1pbiRzb2x1dGlvbikpCmBgYAoKIyMjIyDliKnnm4rjgpLmnIDlpKfjgavjgZnjgosKYGBge3J9Cm91dC5scC5tYXggPC0gbHAoIm1heCIsIGYub2JqLCBmLmNvbiwgZi5kaXIsIGYucmhzKQpzdW0ob3V0LmxwLm1heCRzb2x1dGlvbiAqIGljdG90YWwgKiBjb2Jhc2UkUk9JQykKc3FydCh0KGljdG90YWwqb3V0LmxwLm1heCRzb2x1dGlvbikgJSolIHJjb3YgJSolIChpY3RvdGFsKm91dC5scC5tYXgkc29sdXRpb24pKQpgYGAKCgoKCgoKCgojLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KIyMgYWx0ZXJuYXRpdmUgc29sdXRpb24gdXNpbmcgc29sdmUuUVAKIyBxdWFkcHJvZzo6c29sdmUuUVDplqLmlbDjgafoqIjnrpfjgZnjgovloLTlkIgKIyDnt4/mipXos4fpoY06OTIwMDDjgIHnm67mqJnliKnnm4o6ODAwMOOBqOOBl+OBpuODquOCueOCr+OBjOacgOWwj+OBqOOBquOCiwojIOODneODvOODiOODleOCqeODquOCquOCkuioiOeulwojLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KcG0gPC0gODAwMC85MjAwMCAj55uu5qiZ5Yip55uK546HCkRtYXQgPC0gcmNvdiAj5YWx5YiG5pWjCmR2ZWMgPC0gcmVwLmludCgwLCBucm93KHJjb3YpKQphMSA8LSByZXAuaW50KDEsIG5yb3cocmNvdikpCmEyIDwtIG1hdHJpeChjb2Jhc2UkUk9JQyxucm93PTEpICPmnJ/lvoXliKnnm4oKYTMgPC0gbWF0cml4KDAsIG5yb3cocmNvdiksIG5yb3cocmNvdikpCmRpYWcoYTMpIDwtIDEKYjMgPC0gcmVwLmludCgwLCBucm93KHJjb3YpKQpBbWF0IDwtIHQocmJpbmQoYTEsIGEyLCBhMywgYTMsIC1hMykpCmIwIDwtIGMoMSwgcG0sIGIzLCBjb2Jhc2UkSWNtaW5yLCAtY29iYXNlJEljbWF4cikKcmVxdWlyZShxdWFkcHJvZykKI+acgOmBqeWMluioiOeulwpyZXMgPC0gc29sdmUuUVAoRG1hdCwgZHZlYywgQW1hdCwgYnZlYyA9IGIwLCBtZXEgPSAyKQoj57WQ5p6c5Ye65YqbCnJlcyRzb2x1dGlvbio5MjAwMApzcXJ0KHQoOTIwMDAqcmVzJHNvbHV0aW9uKSAlKiUgcmNvdiAlKiUgKDkyMDAwKnJlcyRzb2x1dGlvbikpCgojLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KIyMgZ2xvYmFsIG1pbmltdW0gcmlzawojIOacgOOCguODquOCueOCr+OBjOWwj+OBleOBj+OBquOCi+ODneODvOODiOODleOCqeODquOCquOCkuioiOeulwojLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KRG1hdCA8LSByY292CmR2ZWMgPC0gcmVwLmludCgwLCBucm93KHJjb3YpKQphMSA8LSByZXAuaW50KDEsIG5yb3cocmNvdikpCmEzIDwtIG1hdHJpeCgwLCBucm93KHJjb3YpLCBucm93KHJjb3YpKQpkaWFnKGEzKSA8LSAxCmIzIDwtIHJlcC5pbnQoMCwgbnJvdyhyY292KSkKQW1hdCA8LSB0KHJiaW5kKGExLCBhMywgYTMsIC1hMykpCmIwIDwtIGMoMSwgYjMsIGNvYmFzZSRJY21pbnIsIC1jb2Jhc2UkSWNtYXhyKQpyZXF1aXJlKHF1YWRwcm9nKQoj5pyA6YGp5YyW6KiI566XCnJlcyA8LSBzb2x2ZS5RUChEbWF0LCBkdmVjLCBBbWF0LCBidmVjID0gYjAsIG1lcSA9IDEpCiPntZDmnpzlh7rlipsKcmVzJHNvbHV0aW9uKjkyMDAwCnNxcnQodCg5MjAwMCpyZXMkc29sdXRpb24pICUqJSByY292ICUqJSAoOTIwMDAqcmVzJHNvbHV0aW9uKSkKCiMtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCiMjIG1heCByZXR1cm4gZ2l2ZW4gcmlzawojIOODquOCueOCr+OCkuS4juOBiOOBpuOAgeWIqeebiuOBjOacgOWkp+OBq+OBquOCi+ODneODvOODiOODleOCqeODquOCquOCkuioiOeulwojIOODquOCueOCrzo0MDDjgIHnt4/mipXos4fpoY06ODc2MTIKIy0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KcmVxdWlyZShSc29sbnApCiPjg6rjgr/jg7zjg7Pjga7oqIjnrpflvI8KZm4gPC0gZnVuY3Rpb24oeCkgICMgdycgeAp7CiAgeiA9IHN1bShjb2Jhc2UkUk9JQyAqIHgpCiAgcmV0dXJuKHopCn0KCiMgY29uc3RyYWludCB6MTogc3VtKHgpICA9IDEgCiMgY29uc3RyYWludCB6MjogcmlzayA9IDQwMAojIOetieW8j+WItue0hAplcW4gPC0gZnVuY3Rpb24oeCl7IAogIHoxID0gc3VtKHgpCiMgIHoyID0gc3FydCh0KDg3NjEyICogeCkgJSolIHJjb3YgJSolICg4NzYxMiAqIHgpKQojICByZXR1cm4oYyh6MSx6MikpCiAgIHJldHVybihjKHoxKSkKfQojY29uc3RyYWludHMgPC0gYygxLDQwMCkKY29uc3RyYWludHMgPC0gYygxKQoKIyBjb25zdHJhaW50IHoxOiBpaCA8PSB4IDw9IHVoCiMg5LiN562J5byP5Yi257SECmluZXEgPC0gZnVuY3Rpb24oeCkgeyAKICB6MSA9IHgKICByZXR1cm4oYyh6MSkpCn0KCmxoIDwtIGMoY29iYXNlJEljbWlucikKdWggPC0gYyhjb2Jhc2UkSWNtYXhyKQoKI+WIneacn+WApOOBruioreWumgp4MCA8LSBjKGNvYmFzZSRJY21heHIpICNyZXAoMS80MiwgbnJvdyhyY292KSkKY3RybCA8LSBsaXN0KFRPTD0xZS0xMCwgdHJhY2U9MCkKCiPmnIDpganljJbjga7oqIjnrpcKc29sNCA8LSBzb2xucCh4MCwgZnVuID0gZm4sIGVxZnVuID0gZXFuLCBlcUIgPSBjb25zdHJhaW50cywgaW5lcSA9IGluZXEsIGluZXFMQiA9IGxoLCBpbmVxVUI9dWgsIGNvbnRyb2w9Y3RybCkKCnNvbDQkcGFycyo4NzYxMiAj5Yip55uK5pyA5aSn5YyW44GZ44KL44Od44O844OI44OV44Kp44Oq44KqCmZuKHNvbDQkcGFycyo4NzYxMikgI+acgOWkp+WMluOBl+OBn+WIqeebiumhjQpzcXJ0KHQoODc2MTIqc29sNCRwYXJzKSAlKiUgcmNvdiAlKiUgKDg3NjEyKnNvbDQkcGFycykpICPjg6rjgrnjgq8KCiMjCiNteXBvcnQoODc2MTIsODAzMCxjb2Jhc2UpCg==</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiQ2FsY3VsYXRlIGFuIGVmZmVjdGl2ZSBmcm9udGllciIKb3V0cHV0OiBodG1sX25vdGVib29rCmF1dGhvdXI6IFkuTmFrYWhhc2hpCmRhdGU6IDIwMTgtMDEtMDgKLS0tCgojIOebrueahArmnInlirnjg5Xjg63jg7Pjg4bjgqPjgqLjgpLmnIDpganljJbjgavjgojjgaPjgabmsYLjgoHjgZ/jgYTvvI7jgZPjgZPjgac8Yj7mnInlirnjg5Xjg63jg7Pjg4bjgqPjgqI8L2I+44Go44Gv77yM44Oq44K/44O844Oz44GM5omA5LiO44Gu44Go44GN44Gr44Oc44Op44OG44Kj44Oq44OG44Kj44GM5pyA5bCP44Go44Gq44KL44Od44O844OI44OV44Kp44Oq44Kq44KS5oSP5ZGz44GZ44KL77yOCuOBvuOBnzxiPuODquOCv+ODvOODszwvYj7jga/mnJ/lvoXliKnnm4rvvIhST0kgKiDmipXos4fpoY3vvInjgpLvvIw8Yj7jg5zjg6njg4bjgqPjg6rjg4bjgqM8L2I+44Gv5pyf5b6F5Yip55uK44Gu5qiZ5rqW6Kqk5beu44Go44GX44Gm6KGo44GV44KM44KL5oqV6LOH44Oq44K544KvCiQkViA9IFxzcXJ0e0UodikgKiBDICogRSh2KSd9JCQK44Gn44GC44KL77yOCuOBvuOBnyRFKHYpJOOBr+acn+W+heODnOODqeODhuOCo+ODquODhuOCo+OBruODmeOCr+ODiOODq++8iDxpPkV4cGVjdGF0aW9ucyBvZiBWb2xhdGlsaXR5PC9pPu+8ie+8jAokQyTjga/nm7jplqLooYzliJfvvIwkRSh2KV5UJOOBr+acn+W+heODnOODqeODhuOCo+ODquODhuOCo+OBruihjOODmeOCr+ODiOODq+OBp+OBguOCi++8jgoK44GT44GT44Gn6Kej5rG644GZ44G544GN5ZWP6aGM44Gv77yMJFYk44KS5pyA5bCP44Go44GZ44KL44KI44GG44Gq5oqV6LOH6aGNJFgk44KS44CB5omA5LiO44Gu5oqV6LOH6aGN44Gu5Yi26ZmQ44Gu5Lit44Gn5rGC44KB44KL44GT44Go44Gn44GC44KL77yO44Gq44GK6KiI566X44Gr5b+F6KaB44Go44Gq44KLUk9J44KEJFxzaWdtYSTjga/ml6Lnn6XjgafjgYLjgovvvI4KCiMjIOWIhuaekDEKIyMjIOWIhuaekOeSsOWig+OBrua6luWCmQojIyMjIOODqeOCpOODluODqeODquOBruiqreOBv+i+vOOBvwpgYGB7cn0KbGlicmFyeShNYXRyaXgpCmBgYAojIyMjIOODh+ODvOOCv+OBruiqreOBv+i+vOOBvwrnm7jplqLooYzliJfjgYrjgojjgbNST0nvvIzmipXos4fpoY3jgarjganjga7jg4fjg7zjgr/jgpLoqq3jgb/ovrzjgoDvvI4KCmBgYHtyfQpjb21hdG5ldyA8LSByZWFkLmNzdigiRGF0YS9uZXdtYXQuY3N2IiwgaGVhZGVyID0gRikKY29iYXNlICAgPC0gcmVhZC5jc3YoIkRhdGEvY29iYXNlbmV3LmNzdiIsIGhlYWRlciA9IFQpCmBgYAojIyMjIOato+WumuespuWPt+ihjOWIl+OBruS9nOaIkO+8iDxpPklmIG5lZWRlZDwvaT7vvIkK55u46Zai6KGM5YiX44GM6Z2e5q2j5a6a44Gn44GC44Gj44Gf5aC05ZCI44Gr44Gv6Kej44GM5b6X44KJ44KM44Gq44GE44Gf44KB77yMe01hdHJpeH3jga48aT5uZWFyUEQ8L2k+44KS55So44GE44Gm5q2j5a6a56ym5Y+36KGM5YiX44Go44Gq44KL55u46Zai6KGM5YiX44KS5L2c5oiQ44GZ44KL77yOCgpgYGB7cn0KZGNvLm1hdCA8LSBuZWFyUEQoYXMubWF0cml4KGNvbWF0bmV3KSwgY29yciA9IFRSVUUpCnJjb3YgICAgPC0gYXMubWF0cml4KGRjby5tYXQkbWF0KQpgYGAKIyMjIyDnm7jplqLooYzliJfjgpLlhbHliIbmlaPooYzliJfjgavlpInmj5sK44Od44O844OI44OV44Kp44Oq44Kq44Gu5ZWG5ZOB44GU44Go44Gu5Yip55uK44Gu5qiZ5rqW5YGP5beu44KS55So44GE44Gm55u46Zai6KGM5YiX44KS5YWx5YiG5pWj6KGM5YiX44Gr5aSJ5o+b44GZ44KL77yOCmBgYHtyfQpyY292IDwtIChjb2Jhc2Ukc2lnICUqJSB0KGNvYmFzZSRzaWcpKSAqIHJjb3YKYGBgCiMjIyMg5pyf5b6F5Yip55uK5q+U546H44Gu6Kit5a6aCmBgYHtyfQphdmVyZXQgPC0gbWF0cml4KGNvYmFzZSRST0lDLCBucm93ID0gMSkKYGBgCgojIyMg6Zai5pWw44Gu5a6a576pCuacieWKueODleODreODs+ODhuOCo+OCouOCkuaxguOCgeOCi+OBn+OCgeOBrumWouaVsOOCkuS7peS4i+OBruOCiOOBhuOBq+Wumue+qeOBmeOCi++8jgoKICAgLSBPYmplY3RpdmUKICAgICAgLSDnm67mqJnliKnnm4rjgpLoqK3lrprjgZfvvIzjg6rjgrnjgq/jgYzmnIDlsI/jgajjgarjgovjg53jg7zjg4jjg5Xjgqnjg6rjgqrjgpLmsYLjgoHjgosKICAgICAgLSB0c2VyaWVzOjpwb3J0Zm9saW8ub3B0aW3plqLmlbDjgpLkvb/jgaPjgaboqIjnrpfjgpLooYzjgYYKICAgLSBJbnB1dAogICAgICAtIGFzc2V0IDog5oqV6LOH57eP6aGNCiAgICAgIC0gdGFyZ2V0LnJldCA6IOebruaomeWIqeebigogICAgICAtIGNvYmFzZSA6IOacn+W+heWIqeebiu+8jOaKleizh+S4i+mZkOODu+S4iumZkOOCkuWQq+OCgOODh+ODvOOCv+ODleODrOODvOODoAogICAtIE91dHB1dAogICAgICAtIGljLmVzdCA6IOODneODvOODiOODleOCqeODquOCqgogICAgICAtIHJpc2sgOiDmnIDlsI/ljJbjgZfjgZ/jg6rjgrnjgq8KCiMjIyMg5oqV6LOH57eP6aGNCmBgYHtyfQppY3RvdGFsIDwtIHN1bShjb2Jhc2UkSUMpCmBgYAoK6Zai5pWw5a6a576p77yI44GT44GT44Gn44Gv44Oc44Op44OG44Kj44Oq44OG44Kj44KS5q+U546H44Gr44KI44KK6KiI566X44GX44Gm44GE44KL77yM5Y2z44GhJFZeMiA9IEUocikgKiBDICogRShyKV5UJOOBp+OBr+OBquOBj++8jCRFKHIpL2Fzc2V0ICogQ292ICogRShyKS9hc3NldCTjgajjgZfjgabjgYTjgovvvI4KCmBgYHtyfQpteXBvcnQgPC0gZnVuY3Rpb24oYXNzZXQgPSBpY3RvdGFsLCB0YXJnZXQucmV0ID0gNzAwMCwgY29iYXNlID0gY29iYXNlKSB7CiAgIAoJIyMgbGlicmFyeeOBruWRvOOBs+WHuuOBlwoJbGlicmFyeSh0c2VyaWVzKQoJCgkjIyDnm67mqJnliKnnm4rjga7oqK3lrpoKCXRhcmdldC5yZXR1cm4gPC0gdGFyZ2V0LnJldC9hc3NldAoKCSMjIOS4iumZkOOAgeS4i+mZkOOBruioreWumgoJcmwgPC0gY29iYXNlJEljbWlucgoJcmggPC0gY29iYXNlJEljbWF4cgoKCSMjIOacn+W+heWIqeebigoJYXZlcmV0IDwtIG1hdHJpeChjb2Jhc2UkUk9JQywgbnJvdyA9IDEpCgkKCSMjIOacgOmBqeWMluioiOeul++8iOODneODvOODiOODleOCqeODquOCquOBruaKleizh+mFjeWIhuOCkuacgOmBqeWMluOBmeOCi++8iQoJcG9ydC5zb2wgPC0gcG9ydGZvbGlvLm9wdGltKHggPSBhdmVyZXQsIHBtID0gdGFyZ2V0LnJldHVybiwgY292bWF0ID0gcmNvdiwKCSAgICAgICAgICAgICAgICAgICAgICAgICAgICBzaG9ydCA9IEYsIHJlc2xvdyA9IHJsLCByZXNoaWdoID0gcmgpCgkKCSMjIOaKleizh+mhjeOCkuaKveWHugoJaWMuZXN0IDwtIHBvcnQuc29sJHB3ICogYXNzZXQKCQoJIyMg44Oq44K544KvCgl2b2wgPC0gCgkgICB0KGFzLnZlY3Rvcihwb3J0LnNvbCRwdykgKiBhc3NldCkgJSolIHJjb3YgJSolIGFzLnZlY3Rvcihwb3J0LnNvbCRwdykgKgoJICAgYXNzZXQKCXJldHVybihsaXN0KGljLmVzdCA9IGljLmVzdCwgcmlzayA9IHNxcnQodm9sKSkpCn0KYGBgCgoKIyMjIyDmipXos4fnt4/poY3jgpLlpInmm7TjgZfjgarjgYzjgonlrp/ooYzjgZfjgabjgb/jgosKYGBge3J9CnJlczEgPC0gbXlwb3J0KGljdG90YWwsIDc4MDAsIGNvYmFzZSkKcmVzMiA8LSBteXBvcnQoaWN0b3RhbCwgODA2MCwgY29iYXNlKQpyZXMzIDwtIG15cG9ydChpY3RvdGFsLCA4MzIwLCBjb2Jhc2UpCnJlczQgPC0gbXlwb3J0KGljdG90YWwsIDg1ODAsIGNvYmFzZSkKcmVzNSA8LSBteXBvcnQoaWN0b3RhbCwgODg0MCwgY29iYXNlKQpyZXM2IDwtIG15cG9ydChpY3RvdGFsLCA5MTAwLCBjb2Jhc2UpCnJlczcgPC0gbXlwb3J0KGljdG90YWwsIDkzNjAsIGNvYmFzZSkKcmVzOCA8LSBteXBvcnQoaWN0b3RhbCwgOTYyMCwgY29iYXNlKQpyZXM5IDwtIG15cG9ydChpY3RvdGFsLCA5ODgwLCBjb2Jhc2UpCnJlczEwIDwtIG15cG9ydChpY3RvdGFsLCAxMDE0MCwgY29iYXNlKQpgYGAKCgojIyDliIbmnpAyCue2muOBhOOBpuaKleizh+e3j+mhjeOCkuaJgOS4juOBqOOBl++8jOODquOCv+ODvOODs+OCkuacgOWwj++8iOacgOWkp++8ieOBq+OBl+OBn+aZguOBruODnOODqeODhuOCo+ODquODhuOCo+OCkuaxguOCgeOCi++8juOBk+OBruWVj+mhjOOBr+ebrueahOmWouaVsOOBjOS4gOasoeOBp+OBguOCi+OBn+OCgee3muW9ouioiOeUu+OBruOCveODq+ODkOOBp+ino+OBkeOCi++8jgoKIyMjIOWIhuaekOeSsOWig+OBrua6luWCmQojIyMjIGxpYnJhcnnjga7oqq3jgb/ovrzjgb8KYGBge3J9CmxpYnJhcnkobHBTb2x2ZSkKYGBgCgojIyMjIOODkeODqeODoeODvOOCv+OBrua6luWCmQpgYGB7cn0KZi5vYmogPC0gY29iYXNlJFJPSUMgCmYuY29uIDwtIHJiaW5kKHJlcCgxLCBucm93KHJjb3YpKSwgZGlhZyhucm93KHJjb3YpKSwgZGlhZyhucm93KHJjb3YpKSkKZi5kaXIgPC0gYygiPSIsIHJlcCgiPj0iLCBucm93KHJjb3YpKSwgcmVwKCI8PSIsIG5yb3cocmNvdikpKQpmLnJocyA8LSBjKDEsIGNvYmFzZSRJY21pbnIsIGNvYmFzZSRJY21heHIpCmBgYAoKIyMjIyDmipXos4fnt4/poY0KYGBge3J9CmljdG90YWwgPC0gc3VtKGNvYmFzZSRJQykKYGBgCgojIyMg5YiG5p6Q44Gu5a6f6KGMCiMjIyMg5Yip55uK44KS5pyA5bCP44Gr44GZ44KLCmBgYHtyfQpvdXQubHAubWluIDwtIGxwKCJtaW4iLCBmLm9iaiwgZi5jb24sIGYuZGlyLCBmLnJocykKIyDov5TjgorlgKTjgajjg5zjg6njg4bjgqPjg6rjg4bjgqMKc3VtKG91dC5scC5taW4kc29sdXRpb24gKiBpY3RvdGFsICogY29iYXNlJFJPSUMpCnNxcnQodChpY3RvdGFsKm91dC5scC5taW4kc29sdXRpb24pICUqJSByY292ICUqJSAoaWN0b3RhbCpvdXQubHAubWluJHNvbHV0aW9uKSkKYGBgCgojIyMjIOWIqeebiuOCkuacgOWkp+OBq+OBmeOCiwpgYGB7cn0Kb3V0LmxwLm1heCA8LSBscCgibWF4IiwgZi5vYmosIGYuY29uLCBmLmRpciwgZi5yaHMpCnN1bShvdXQubHAubWF4JHNvbHV0aW9uICogaWN0b3RhbCAqIGNvYmFzZSRST0lDKQpzcXJ0KHQoaWN0b3RhbCpvdXQubHAubWF4JHNvbHV0aW9uKSAlKiUgcmNvdiAlKiUgKGljdG90YWwqb3V0LmxwLm1heCRzb2x1dGlvbikpCmBgYAoKCiMjIOWIhuaekDMKe3F1YWRwcm9nfeOBrnNvbHZlLlFQ6Zai5pWw44Gn6KiI566X44GZ44KL5aC05ZCI44KS5Lul5LiL44Gr56S644GZ77yOCuS+i+OBqOOBl+OBpue3j+aKleizh+mhjeOBjDkyMDAw77yM55uu5qiZ5Yip55uK44KSODAwMOOBqOOBl+OBpuODquOCueOCr+OBjOacgOWwj+OBqOOBquOCi+ODneODvOODiOODleOCqeODquOCquOCkuioiOeul+OBmeOCi++8jgoKIyMjIOWIhuaekOeSsOWig+OBrua6luWCmQojIyMjIOODqeOCpOODluODqeODquOBruiqreOBv+i+vOOBvwpgYGB7cn0KbGlicmFyeShxdWFkcHJvZykKbGlicmFyeShSc29sbnApCmBgYAoKIyMjIyDjg5Hjg6njg6Hjg7zjgr/jga7oqK3lrpoKYGBge3J9CnBtICAgPC0gODAwMC85MjAwMCAj55uu5qiZ5Yip55uK546HCkRtYXQgPC0gcmNvdiAj5YWx5YiG5pWjCmR2ZWMgPC0gcmVwLmludCgwLCBucm93KHJjb3YpKQphMSAgIDwtIHJlcC5pbnQoMSwgbnJvdyhyY292KSkKYTIgICA8LSBtYXRyaXgoY29iYXNlJFJPSUMsIG5yb3c9MSkgI+acn+W+heWIqeebigphMyAgIDwtIG1hdHJpeCgwLCBucm93KHJjb3YpLCBucm93KHJjb3YpKQpkaWFnKGEzKSA8LSAxCmIzICAgPC0gcmVwLmludCgwLCBucm93KHJjb3YpKQpBbWF0IDwtIHQocmJpbmQoYTEsIGEyLCBhMywgYTMsIC1hMykpCmIwICAgPC0gYygxLCBwbSwgYjMsIGNvYmFzZSRJY21pbnIsIC1jb2Jhc2UkSWNtYXhyKQpgYGAKCiMjIyDliIbmnpDjga7lrp/ooYwKYGBge3J9CnJlcyAgPC0gc29sdmUuUVAoRG1hdCwgZHZlYywgQW1hdCwgYnZlYyA9IGIwLCBtZXEgPSAyKQpyZXMkc29sdXRpb24gKiA5MjAwMApzcXJ0KHQoOTIwMDAqcmVzJHNvbHV0aW9uKSAlKiUgcmNvdiAlKiUgKDkyMDAwKnJlcyRzb2x1dGlvbikpCmBgYAoK5pyA44KC44Oq44K544Kv44GM5bCP44GV44GP44Gq44KL44Od44O844OI44OV44Kp44Oq44Kq44KS6KiI566XCgpgYGB7cn0KRG1hdCA8LSByY292CmR2ZWMgPC0gcmVwLmludCgwLCBucm93KHJjb3YpKQphMSA8LSByZXAuaW50KDEsIG5yb3cocmNvdikpCmEzIDwtIG1hdHJpeCgwLCBucm93KHJjb3YpLCBucm93KHJjb3YpKQpkaWFnKGEzKSA8LSAxCmIzIDwtIHJlcC5pbnQoMCwgbnJvdyhyY292KSkKQW1hdCA8LSB0KHJiaW5kKGExLCBhMywgYTMsIC1hMykpCmIwIDwtIGMoMSwgYjMsIGNvYmFzZSRJY21pbnIsIC1jb2Jhc2UkSWNtYXhyKQpyZXMgPC0gc29sdmUuUVAoRG1hdCwgZHZlYywgQW1hdCwgYnZlYyA9IGIwLCBtZXEgPSAxKQpyZXMkc29sdXRpb24qOTIwMDAKc3FydCh0KDkyMDAwKnJlcyRzb2x1dGlvbikgJSolIHJjb3YgJSolICg5MjAwMCpyZXMkc29sdXRpb24pKQpgYGAKCuODquOCueOCr+OCkuS4juOBiOOBpuOAgeWIqeebiuOBjOacgOWkp+OBq+OBquOCi+ODneODvOODiOODleOCqeODquOCquOCkuioiOeulwrjg6rjgrnjgq86NDAw44CB57eP5oqV6LOH6aGNOjg3NjEyCgpgYGB7cn0KI+ODquOCv+ODvOODs+OBruioiOeul+W8jwpmbiA8LSBmdW5jdGlvbih4KSAgIyB3JyB4CnsKICB6ID0gc3VtKGNvYmFzZSRST0lDICogeCkKICByZXR1cm4oeikKfQoKYGBgCgpgYGB7cn0KIyBjb25zdHJhaW50IHoxOiBzdW0oeCkgID0gMSAKIyBjb25zdHJhaW50IHoyOiByaXNrID0gNDAwCiMg562J5byP5Yi257SECmVxbiA8LSBmdW5jdGlvbih4KXsgCiAgejEgPSBzdW0oeCkKIyAgejIgPSBzcXJ0KHQoODc2MTIgKiB4KSAlKiUgcmNvdiAlKiUgKDg3NjEyICogeCkpCiMgIHJldHVybihjKHoxLHoyKSkKICAgcmV0dXJuKGMoejEpKQp9CiNjb25zdHJhaW50cyA8LSBjKDEsNDAwKQpjb25zdHJhaW50cyA8LSBjKDEpCgpgYGAKCgpgYGB7cn0KIyBjb25zdHJhaW50IHoxOiBpaCA8PSB4IDw9IHVoCiMg5LiN562J5byP5Yi257SECmluZXEgPC0gZnVuY3Rpb24oeCkgeyAKICB6MSA9IHgKICByZXR1cm4oYyh6MSkpCn0KCmxoIDwtIGMoY29iYXNlJEljbWlucikKdWggPC0gYyhjb2Jhc2UkSWNtYXhyKQoKI+WIneacn+WApOOBruioreWumgp4MCA8LSBjKGNvYmFzZSRJY21heHIpICNyZXAoMS80MiwgbnJvdyhyY292KSkKY3RybCA8LSBsaXN0KFRPTD0xZS0xMCwgdHJhY2U9MCkKCiPmnIDpganljJbjga7oqIjnrpcKc29sNCA8LSBzb2xucCh4MCwgZnVuID0gZm4sIGVxZnVuID0gZXFuLCBlcUIgPSBjb25zdHJhaW50cywgaW5lcSA9IGluZXEsIGluZXFMQiA9IGxoLCBpbmVxVUI9dWgsIGNvbnRyb2w9Y3RybCkKCnNvbDQkcGFycyo4NzYxMiAj5Yip55uK5pyA5aSn5YyW44GZ44KL44Od44O844OI44OV44Kp44Oq44KqCmZuKHNvbDQkcGFycyo4NzYxMikgI+acgOWkp+WMluOBl+OBn+WIqeebiumhjQpzcXJ0KHQoODc2MTIqc29sNCRwYXJzKSAlKiUgcmNvdiAlKiUgKDg3NjEyKnNvbDQkcGFycykpICPjg6rjgrnjgq8KCm15cG9ydCg4NzYxMiw4MDMwLGNvYmFzZSkKCmBgYA==</div>
 
 
 
