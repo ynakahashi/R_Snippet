@@ -46,23 +46,16 @@ averet <- matrix(cobase$ROIC, nrow = 1)
 ```
 
 ### 関数の定義
-有効フロンティアを求めるための関数を以下のように定義する．
-
-   - Objective
-      - 目標利益を設定し，リスクが最小となるポートフォリオを求める
-      - tseries::portfolio.optim関数を使って計算を行う
-   - Input
-      - asset : 投資総額
-      - target.ret : 目標利益
-      - cobase : 期待利益，投資下限・上限を含むデータフレーム
-   - Output
-      - ic.est : ポートフォリオ
-      - risk : 最小化したリスク
-
-#### 投資総額
-```{r}
-ictotal <- sum(cobase$IC)
-```
+有効フロンティアを求めるための関数を以下のように作成する．
+<dl>
+   <dt> Objective </dt>
+   <dd> 目標利益を設定し，リスクが最小となるポートフォリオを求める．
+   tseries::portfolio.optim関数を使って計算を行う． </dd>
+   <dt> Input </dt>
+   <dd> 投資総額（asset），目標利益（target.ret），期待利益や投資額の上限・下限を含むデータフレーム（cobase）</dd>
+   <dt> Output </dt>
+   <dd> ポートフォリオ（ic.est），最小化したリスク（risk） </dd>
+</dl>
 
 関数定義（ここではボラティリティを比率により計算している，即ち$V^2 = E(r) * C * E(r)^T$ではなく，$E(r)/asset * Cov * E(r)/asset$としている．
 
@@ -97,9 +90,9 @@ myport <- function(asset = ictotal, target.ret = 7000, cobase = cobase) {
 }
 ```
 
-
-#### 投資総額を変更しながら実行してみる
 ```{r}
+#### 投資総額を変更しながら実行してみる
+ictotal <- sum(cobase$IC)
 res1 <- myport(ictotal, 7800, cobase)
 res2 <- myport(ictotal, 8060, cobase)
 res3 <- myport(ictotal, 8320, cobase)
