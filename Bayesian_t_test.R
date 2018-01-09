@@ -67,17 +67,24 @@ pars <- c(50, 30, 20, 50)
 results <- matrix(0, nrow = N_iter, ncol = 8)
 results[1, ] <- c(pars, 0, 0, 0, 0)
 
+
+candidate <- pars
+system.time(
 for (i in 2:N_iter) {
    for (j in 1:4) { # Gibbs Sampling
-      candidate <- pars
+      # candidate <- pars
+      proposal <- candidate
       # candidate <- candidate + rnorm(4, sd = 0.5) # Metropolis
-      candidate[j] <- candidate[j] + rnorm(1, sd = 0.5) # Gibbs Sampling
-      ratio <- exp(posterior(candidate) - posterior(pars))
+      proposal[j] <- candidate[j] + rnorm(1, sd = 0.5) # Gibbs Sampling
+      ratio <- max(0, exp(posterior(proposal) - posterior(candidate)))
       t <- runif(1)
-      if (t < ratio) { pars <- candidate }
+      if (t < ratio) { candidate <- proposal }
    } # Gibbs Sampling
-   results[i, ] <- c(pars, ratio, t, posterior(pars), posterior(candidate))
+   results[i, ] <- c(candidate, ratio, t, posterior(proposal), posterior(candidate))
 }
+)
+
+
 
 par(mfrow = c(2, 2))
 plot(results[, 1])
