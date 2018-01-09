@@ -235,7 +235,7 @@ lh <- c(cobase$Icminr)
 uh <- c(cobase$Icmaxr)
 
 #初期値の設定
-x0 <- c(cobase$Icmaxr) #rep(1/42, nrow(rcov))
+x0   <- c(cobase$Icmaxr) #rep(1/42, nrow(rcov))
 ctrl <- list(TOL = 1e-10, trace = 0)
 
 #最適化の計算
