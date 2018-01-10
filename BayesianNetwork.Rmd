@@ -2,29 +2,91 @@
 title: "BayesianNetwork"
 author: "Y.Nakahashi"
 date: "2018/1/10"
-output: html_document
+output: html_notebook
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+### 目的
+*Bayesian Network*により変数間の関連性を図示し，かつその強さを定量的に示したい．
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+### 分析環境の準備
+必要なライブラリの読み込み
+```{r}
+library(BNSL)
+library(bnlearn)
 ```
 
-## Including Plots
+サンプルデータの作成
+```{r}
+norm <- rnorm(4000)
+Data <- matrix(norm, nrow = 1000, ncol = 4, byrow = T)
+colnames(Data) <- c("Height", "BMI", "SBP", "FBS")
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+Data2 <- Data <- as.data.frame(Data)
+Data2$Height <- 170 + Data$Height * 10
+Data2$SBP    <- 120 + Data$SBP * 10
+Data2$BMI    <- 22  + Data$Height * 2 + Data$SBP * 2
+Data2$FBS    <- 90  + (Data2$BMI - 22) * 5 + Data$FBS * 10
+formattable::formattable(head(Data2, 20))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+res.Data2 <- gs(Data2)
+plot(res.Data2)
+res.arc2 <- set.arc(res.Data2, "FBS", "BMI")
+plot(res.arc2)
+arc.strength(res.arc2, Data2)
+
+fitted <- bn.fit(res.Data2, Data2)
+(Coef <- coefficients(fitted))
+```
+
+```{r}
+res_01 <- gs(gaussian.test)
+plot(res_01)
+bn.fit(res_01, gaussian.test)
+res_01_arc <- set.arc(res_01, "C", "F")
+plot(res_01)
+plot(res_01_arc)
+bn.fit(res_01_arc, gaussian.test)
+
+
+
+res_02 <- gs(gaussian.test, optimized = TRUE)
+plot(res_02)
+identical(res_01, res_02)
+
+bn.fit(res_02, gaussian.test)
+arc.strength(res_02, gaussian.test)
+
+
+
+res_11 <- gs(learning.test)
+plot(res_11)
+res_12 <- gs(learning.test, optimized = TRUE)
+plot(res_12)
+bn.fit(res_12, learning.test)
+```
+
+
+
+```{r}
+res_21 <- bnsl(gaussian.test)
+plot(res_21)
+
+fit_01 <- bn.fit(res_21, gaussian.test)
+coefficients(fit_01)
+
+tmp <- as.data.frame(scale(gaussian.test))
+res_22 <- bnsl(tmp)
+plot(res_22)
+
+fit_02 <- bn.fit(res_22, tmp)
+coefficients(fit_02)
+```
+
