@@ -13,13 +13,17 @@ knitr::opts_chunk$set(echo = TRUE)
 *Bayesian Network*により変数間の関連性を図示し，かつその強さを定量的に示したい．
 
 ### 分析環境の準備
-必要なライブラリの読み込み
+#### ライブラリの読み込み
+*bnlearn*だとうまくfitできないので，*BNSL*を使う．
+
 ```{r}
-library(BNSL)
-library(bnlearn)
+suppstrsMessages(library(BNSL))
+suppstrsMessages(library(bnlearn))
 ```
 
-サンプルデータの作成
+#### サンプルデータの作成
+HeightとSBPがBMIに刺さり，BMIがFBSに刺さる構造とする．
+
 ```{r}
 norm <- rnorm(4000)
 Data <- matrix(norm, nrow = 1000, ncol = 4, byrow = T)
@@ -30,63 +34,130 @@ Data2$Height <- 170 + Data$Height * 10
 Data2$SBP    <- 120 + Data$SBP * 10
 Data2$BMI    <- 22  + Data$Height * 2 + Data$SBP * 2
 Data2$FBS    <- 90  + (Data2$BMI - 22) * 5 + Data$FBS * 10
-formattable::formattable(head(Data2, 20))
+formattable::formattable(head(Data2))
 ```
 
 
+### 分析実行
+#### 構造学習
+構造学習のアルゴリズムには*Grow-Shrink*を指定．Webだと*Hill-Climbing*が使われる事が多い様子．*gs*ではその通りに構造を学習できている．
 
 ```{r}
-res.Data2 <- gs(Data2)
-plot(res.Data2)
-res.arc2 <- set.arc(res.Data2, "FBS", "BMI")
-plot(res.arc2)
-arc.strength(res.arc2, Data2)
+str_01 <- gs(Data2)
+plot(str_01)
+```
 
-fitted <- bn.fit(res.Data2, Data2)
+#### フィッティング
+この構造を用いてパラメータを推定する．係数の意味はよくわからない．
+
+```{r}
+fit_01 <- bn.fit(str_01, Data2)
 (Coef <- coefficients(fitted))
 ```
 
+
+### 分析実行その２
+サンプルデータの*gaussian.test*を用いてパラメータの推定を行う．
+
+#### 構造学習
+元の構造はわからないが，*gs*によって推定した形は以下のよう．
+
 ```{r}
-res_01 <- gs(gaussian.test)
-plot(res_01)
-bn.fit(res_01, gaussian.test)
-res_01_arc <- set.arc(res_01, "C", "F")
-plot(res_01)
-plot(res_01_arc)
-bn.fit(res_01_arc, gaussian.test)
+str_02 <- gs(gaussian.test)
+plot(str_02)
+```
 
+#### フィッティング
+グラフの構造が悪く，フィッティングできない．
 
-
-res_02 <- gs(gaussian.test, optimized = TRUE)
-plot(res_02)
-identical(res_01, res_02)
-
-bn.fit(res_02, gaussian.test)
-arc.strength(res_02, gaussian.test)
-
-
-
-res_11 <- gs(learning.test)
-plot(res_11)
-res_12 <- gs(learning.test, optimized = TRUE)
-plot(res_12)
-bn.fit(res_12, learning.test)
+```{r}
+str_02
 ```
 
 
 
+
+
+
 ```{r}
-res_21 <- bnsl(gaussian.test)
-plot(res_21)
+fit_02 <- bn.fit(str_02, gaussian.test)
+```
 
-fit_01 <- bn.fit(res_21, gaussian.test)
-coefficients(fit_01)
+無向のエッジがあるためかと考え，B -> Dのエッジを設定する．undirected arcsが0となっていることを確認．
 
+```{r}
+(str_03 <- set.arc(str_02, "B", "D"))
+```
+
+フィッティングしたが，やはりダメ．
+
+```{r}
+fit_03 <- bn.fit(str_03, gaussian.test)
+
+```
+
+### 分析実行その３
+#### 構造学習
+今度は構造の推定に*BNSL*を試してみる．
+
+```{r}
+str_04 <- bnsl(gaussian.test)
+plot(str_04)
+```
+
+bnlearn::gsを用いた時と比べて構造がかなり異なる．比較してみる．
+
+```{r}
+par(mfrow = c(1, 2))
+plot(str_03) # bnlearn::gsで推定したあとにset.archでB -> Dを設定
+plot(str_04) # BNSL::bnsl
+```
+
+"A -> C"や"G -> F"など，方向性が逆転する関係が見られる．Eも独立してしまった．
+
+#### フィッティング
+この構造でフィッティングしてみる．フィッティング自体はbnlearn::bn.fitを用いる．
+
+```{r}
+fit_03 <- bn.fit(str_03, gaussian.test)
+coefficients(fit_03)
+```
+
+```{r}
 tmp <- as.data.frame(scale(gaussian.test))
-res_22 <- bnsl(tmp)
-plot(res_22)
+str_22 <- bnsl(tmp)
+plot(str_22)
 
-fit_02 <- bn.fit(res_22, tmp)
+fit_02 <- bn.fit(str_22, tmp)
 coefficients(fit_02)
 ```
+
+
+
+```{r}
+str_01_arc <- set.arc(str_01, "C", "F")
+plot(str_01)
+plot(str_01_arc)
+bn.fit(str_01_arc, gaussian.test)
+
+
+
+str_02 <- gs(gaussian.test, optimized = TRUE)
+plot(str_02)
+identical(str_01, str_02)
+
+bn.fit(str_02, gaussian.test)
+arc.strength(str_02, gaussian.test)
+
+
+
+str_11 <- gs(learning.test)
+plot(str_11)
+str_12 <- gs(learning.test, optimized = TRUE)
+plot(str_12)
+bn.fit(str_12, learning.test)
+```
+
+
+
 
