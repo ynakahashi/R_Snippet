@@ -12,9 +12,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ### 目的
 *Bayesian Network*により変数間の関連性を図示し，かつその強さを定量的に示したい．
 
+----
+
 ### 分析環境の準備
 #### ライブラリの読み込み
-*bnlearn*だとうまくfitできないので，*BNSL*を使う．
 
 ```{r}
 suppstrsMessages(library(BNSL))
@@ -48,19 +49,22 @@ plot(str_01)
 ```
 
 #### フィッティング
-この構造を用いてパラメータを推定する．係数の意味はよくわからない．
+この構造を用いてパラメータを推定する．ここで得られる係数は，個別にlmをかけたものと同じとなる．例えばBMIであれば，lm(BMI ~ Height + SBP)と等しい．
 
 ```{r}
 fit_01 <- bn.fit(str_01, Data2)
-(Coef <- coefficients(fitted))
+(coef_01 <- coefficients(fit_01))
+```
+
+```{r}
+coef(lm(BMI ~ Height + SBP, Data2))
 ```
 
 
-### 分析実行その２
-サンプルデータの*gaussian.test*を用いてパラメータの推定を行う．
 
+### 分析実行その２
 #### 構造学習
-元の構造はわからないが，*gs*によって推定した形は以下のよう．
+サンプルデータの*gaussian.test*を用いてパラメータの推定を行う．元の構造はわからないが*gs*によって推定した形は以下のよう．
 
 ```{r}
 str_02 <- gs(gaussian.test)
@@ -71,30 +75,37 @@ plot(str_02)
 グラフの構造が悪く，フィッティングできない．
 
 ```{r}
-str_02
-```
-
-
-
-
-
-
-```{r}
 fit_02 <- bn.fit(str_02, gaussian.test)
 ```
 
-無向のエッジがあるためかと考え，B -> Dのエッジを設定する．undirected arcsが0となっていることを確認．
+str_02の中身を確認すると，modelが[partially directed graph]となっていることがわかる．またarcsのundirected arcsが1になっている．
+
+```{r}
+str_02
+```
+
+再度str_02の構造を確認すると，ノードBD間のエッジが無向になっていることがわかる．
+
+```{r}
+plot(str_02)
+```
+
+
+そこでB -> Dのエッジを設定してみる．undirected arcsが0となり，modelがpartially directed graphではなくノード間の関連性を表したものとなっていることを確認する．
 
 ```{r}
 (str_03 <- set.arc(str_02, "B", "D"))
+plot(str_03)
 ```
 
-フィッティングしたが，やはりダメ．
+この構造を用いて再度フィッティングしてみる．
 
 ```{r}
 fit_03 <- bn.fit(str_03, gaussian.test)
-
+(coef_03 <- coefficients(fit_03))
 ```
+
+今度は上手くいった！
 
 ### 分析実行その３
 #### 構造学習
@@ -109,7 +120,7 @@ bnlearn::gsを用いた時と比べて構造がかなり異なる．比較して
 
 ```{r}
 par(mfrow = c(1, 2))
-plot(str_03) # bnlearn::gsで推定したあとにset.archでB -> Dを設定
+plot(str_03) # bnlearn::gsで推定したあとにset.arcでB -> Dを設定
 plot(str_04) # BNSL::bnsl
 ```
 
@@ -119,43 +130,43 @@ plot(str_04) # BNSL::bnsl
 この構造でフィッティングしてみる．フィッティング自体はbnlearn::bn.fitを用いる．
 
 ```{r}
-fit_03 <- bn.fit(str_03, gaussian.test)
-coefficients(fit_03)
+fit_04 <- bn.fit(str_04, gaussian.test)
+coefficients(fit_04)
+```
+
+### 分析実行その４
+さらに続いて，データを標準化した場合の結果も確認してみる．*scale*でデータを標準化する．
+
+```{r}
+my_gaussian <- as.data.frame(scale(gaussian.test))
+str_05 <- bnsl(my_gaussian)
+par(mfrow = c(1, 3))
+plot(str_03)
+plot(str_04)
+plot(str_05)
+```
+
+標準化すると構造が変わってしまう．
+
+```{r}
+fit_05 <- bn.fit(str_05, my_gaussian)
+coefficients(fit_05)
+```
+
+
+
+```{r}
+str_06 <- gs(learning.test)
+str_07 <- gs(learning.test, optimized = TRUE)
+par(mfrow = c(1, 2))
+plot(str_06)
+plot(str_07)
 ```
 
 ```{r}
-tmp <- as.data.frame(scale(gaussian.test))
-str_22 <- bnsl(tmp)
-plot(str_22)
-
-fit_02 <- bn.fit(str_22, tmp)
-coefficients(fit_02)
-```
-
-
-
-```{r}
-str_01_arc <- set.arc(str_01, "C", "F")
-plot(str_01)
-plot(str_01_arc)
-bn.fit(str_01_arc, gaussian.test)
-
-
-
-str_02 <- gs(gaussian.test, optimized = TRUE)
-plot(str_02)
-identical(str_01, str_02)
-
-bn.fit(str_02, gaussian.test)
-arc.strength(str_02, gaussian.test)
-
-
-
-str_11 <- gs(learning.test)
-plot(str_11)
-str_12 <- gs(learning.test, optimized = TRUE)
-plot(str_12)
-bn.fit(str_12, learning.test)
+str_08 <- set.arc(str_06, "A", "B")
+bn.fit(str_08, learning.test, method = "mle")
+bn.fit(str_08, learning.test, method = "bayes")
 ```
 
 
