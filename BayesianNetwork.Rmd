@@ -18,14 +18,15 @@ knitr::opts_chunk$set(echo = TRUE)
 #### ライブラリの読み込み
 
 ```{r}
-suppstrsMessages(library(BNSL))
-suppstrsMessages(library(bnlearn))
+suppressMessages(library(BNSL))
+suppressMessages(library(bnlearn))
 ```
 
 #### サンプルデータの作成
-HeightとSBPがBMIに刺さり，BMIがFBSに刺さる構造とする．
+[こちらの記事](http://d.hatena.ne.jp/isseing333/20100604)を参考にサンプルデータを作成した．一部の係数を修正したが，記事同様にHeightとSBPがBMIに刺さり，BMIがFBSに刺さる構造となっている．
 
 ```{r}
+set.seed(123)
 norm <- rnorm(4000)
 Data <- matrix(norm, nrow = 1000, ncol = 4, byrow = T)
 colnames(Data) <- c("Height", "BMI", "SBP", "FBS")
@@ -33,7 +34,7 @@ colnames(Data) <- c("Height", "BMI", "SBP", "FBS")
 Data2 <- Data <- as.data.frame(Data)
 Data2$Height <- 170 + Data$Height * 10
 Data2$SBP    <- 120 + Data$SBP * 10
-Data2$BMI    <- 22  + Data$Height * 2 + Data$SBP * 2
+Data2$BMI    <- 22  + Data$Height * 5 + Data$SBP * 5
 Data2$FBS    <- 90  + (Data2$BMI - 22) * 5 + Data$FBS * 10
 formattable::formattable(head(Data2))
 ```
@@ -41,18 +42,23 @@ formattable::formattable(head(Data2))
 
 ### 分析実行
 #### 構造学習
-構造学習のアルゴリズムには*Grow-Shrink*を指定．Webだと*Hill-Climbing*が使われる事が多い様子．*gs*ではその通りに構造を学習できている．
+Bayesian Networkはデータから変数間の関連性を推定する構造学習と，推定された構造を元にパラメータを推定するフィッティングの二段階で実施される．構造学習のアルゴリズムには*Grow-Shrink*を指定．Webだと*Hill-Climbing*が使われる事が多い様子だが，先ほど参照した記事によると*Grow-Shrink*はグラフ理論による裏付けがあるとのこと．
 
 ```{r}
-str_01 <- gs(Data2)
-plot(str_01)
+str_01_gs <- gs(Data2)
+str_01_hc <- hc(Data2)
+par(mfrow = c(1, 2))
+plot(str_01_gs)
+plot(str_01_hc)
 ```
 
+gsでは設定した通りの構造が推定されたが，hcではBMIとSBPの関係性が逆転している．
+
 #### フィッティング
-この構造を用いてパラメータを推定する．ここで得られる係数は，個別にlmをかけたものと同じとなる．例えばBMIであれば，lm(BMI ~ Height + SBP)と等しい．
+この構造を用いてパラメータを推定する．なおここで得られる係数は，個別にlmをかけたものと同じとなり，例えばBMIであればlm(BMI ~ Height + SBP)と等しい．
 
 ```{r}
-fit_01 <- bn.fit(str_01, Data2)
+fit_01 <- bn.fit(str_01_gs, Data2)
 (coef_01 <- coefficients(fit_01))
 ```
 
@@ -60,11 +66,11 @@ fit_01 <- bn.fit(str_01, Data2)
 coef(lm(BMI ~ Height + SBP, Data2))
 ```
 
-
+----
 
 ### 分析実行その２
 #### 構造学習
-サンプルデータの*gaussian.test*を用いてパラメータの推定を行う．元の構造はわからないが*gs*によって推定した形は以下のよう．
+次にサンプルデータの*gaussian.test*を用いてパラメータの推定を行う．元の構造はわからないが*gs*によって推定した形は以下のよう．
 
 ```{r}
 str_02 <- gs(gaussian.test)
@@ -107,21 +113,49 @@ fit_03 <- bn.fit(str_03, gaussian.test)
 
 今度は上手くいった！
 
+----
+
 ### 分析実行その３
+続いて直接効果と間接効果の分離を試みる．再度*gs*で構造を推定し，B -> Dのエッジと共にB -> Fのエッジも追加する．これでBはFに対して直接刺さるエッジとDを経由してFに刺さるエッジを持つことになる．
+
+```{r}
+str_04 <- set.arc(str_03, "B", "F")
+par(mfrow = c(1, 3))
+plot(str_02) # gsで推定した構造
+plot(str_03) # B -> Dに修正
+plot(str_04) # B -> Fを追加
+```
+
+
+```{r}
+fit_04 <- bn.fit(str_04, gaussian.test)
+coefficients(fit_04)
+coefficients(fit_03)
+```
+
+```{r}
+coef(lm(F ~ A + B + D + E + G, gaussian.test))
+```
+
+Bの変動による寄与はほとんどDを経由してFに影響しているようで，BのFへの直接の効果はなさそう．
+
+----
+
+### 分析実行その４
 #### 構造学習
 今度は構造の推定に*BNSL*を試してみる．
 
 ```{r}
-str_04 <- bnsl(gaussian.test)
-plot(str_04)
+str_05 <- bnsl(gaussian.test)
+plot(str_05)
 ```
 
 bnlearn::gsを用いた時と比べて構造がかなり異なる．比較してみる．
 
 ```{r}
 par(mfrow = c(1, 2))
-plot(str_03) # bnlearn::gsで推定したあとにset.arcでB -> Dを設定
-plot(str_04) # BNSL::bnsl
+plot(str_02)
+plot(str_05)
 ```
 
 "A -> C"や"G -> F"など，方向性が逆転する関係が見られる．Eも独立してしまった．
@@ -130,45 +164,63 @@ plot(str_04) # BNSL::bnsl
 この構造でフィッティングしてみる．フィッティング自体はbnlearn::bn.fitを用いる．
 
 ```{r}
-fit_04 <- bn.fit(str_04, gaussian.test)
-coefficients(fit_04)
+fit_05 <- bn.fit(str_05, gaussian.test)
+coefficients(fit_05)
 ```
 
-### 分析実行その４
+
+----
+
+
+----
+
+### 分析実行その５
 さらに続いて，データを標準化した場合の結果も確認してみる．*scale*でデータを標準化する．
 
 ```{r}
 my_gaussian <- as.data.frame(scale(gaussian.test))
-str_05 <- bnsl(my_gaussian)
-par(mfrow = c(1, 3))
-plot(str_03)
+str_06 <- bnsl(my_gaussian)
+par(mfrow = c(1, 2))
 plot(str_04)
-plot(str_05)
+plot(str_06)
 ```
 
 標準化すると構造が変わってしまう．
 
 ```{r}
-fit_05 <- bn.fit(str_05, my_gaussian)
-coefficients(fit_05)
+fit_06 <- bn.fit(str_06, my_gaussian)
+coefficients(fit_06)
+```
+
+----
+
+### 分析実行その６
+ライブラリ{MASS}に格納されているサンプルデータbirthwtを用いて推定してみる（ただしbnlearnではintegerは使えないのでnumericに変換し，変数も一部に限定する）．
+
+#### 構造学習
+構造学習のアルゴリズムには*Hill-Climbing*を指定．
+
+```{r}
+vars <- c("low", "race", "smoke", "ht", "ui")
+my_birthwt <- as.data.frame((do.call("cbind", lapply(birthwt[, vars],
+                                                     as.numeric))))
+str_01 <- hc(my_birthwt)
+plot(str_01)
 ```
 
 
 
 ```{r}
-str_06 <- gs(learning.test)
-str_07 <- gs(learning.test, optimized = TRUE)
+str_07 <- gs(learning.test)
+str_08 <- gs(learning.test, optimized = TRUE)
 par(mfrow = c(1, 2))
-plot(str_06)
 plot(str_07)
+plot(str_08)
 ```
 
 ```{r}
-str_08 <- set.arc(str_06, "A", "B")
-bn.fit(str_08, learning.test, method = "mle")
-bn.fit(str_08, learning.test, method = "bayes")
+str_09 <- set.arc(str_07, "A", "B")
+bn.fit(str_09, learning.test, method = "mle")
+bn.fit(str_09, learning.test, method = "bayes")
 ```
-
-
-
 
