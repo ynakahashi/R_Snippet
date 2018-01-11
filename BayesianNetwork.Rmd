@@ -18,8 +18,8 @@ knitr::opts_chunk$set(echo = TRUE)
 #### ライブラリの読み込み
 
 ```{r}
-suppressMessages(library(BNSL))
 suppressMessages(library(bnlearn))
+suppressMessages(library(BNSL))
 ```
 
 #### サンプルデータの作成
@@ -37,6 +37,7 @@ Data2$SBP    <- 120 + Data$SBP * 10
 Data2$BMI    <- 22  + Data$Height * 5 + Data$SBP * 5
 Data2$FBS    <- 90  + (Data2$BMI - 22) * 5 + Data$FBS * 10
 formattable::formattable(head(Data2))
+knitr::kable(head(Data2))
 ```
 
 
@@ -198,14 +199,40 @@ coefficients(fit_06)
 ライブラリ{MASS}に格納されているサンプルデータbirthwtを用いて推定してみる（ただしbnlearnではintegerは使えないのでnumericに変換し，変数も一部に限定する）．
 
 #### 構造学習
-構造学習のアルゴリズムには*Hill-Climbing*を指定．
+構造学習のアルゴリズムには色々なものを指定してみる．
 
 ```{r}
 vars <- c("low", "race", "smoke", "ht", "ui")
 my_birthwt <- as.data.frame((do.call("cbind", lapply(birthwt[, vars],
                                                      as.numeric))))
-str_01 <- hc(my_birthwt)
-plot(str_01)
+str_07_01 <- hc(my_birthwt)
+str_07_02 <- gs(my_birthwt)
+str_07_03 <- iamb(my_birthwt)
+str_07_04 <- fast.iamb(my_birthwt)
+str_07_05 <- inter.iamb(my_birthwt)
+str_07_06 <- tabu(my_birthwt)
+str_07_07 <- mmhc(my_birthwt)
+str_07_08 <- rsmax2(my_birthwt)
+str_07_09 <- mmpc(my_birthwt)
+str_07_10 <- si.hiton.pc(my_birthwt)
+str_07_11 <- chow.liu(my_birthwt)
+str_07_12 <- aracne(my_birthwt)
+par(mfrow = c(1, 3))
+plot(str_07_01)
+plot(str_07_02)
+plot(str_07_03)
+par(mfrow = c(1, 3))
+plot(str_07_04)
+plot(str_07_05)
+plot(str_07_06)
+par(mfrow = c(1, 3))
+plot(str_07_07)
+plot(str_07_08)
+plot(str_07_09)
+par(mfrow = c(1, 3))
+plot(str_07_10)
+plot(str_07_11)
+plot(str_07_12)
 ```
 
 
