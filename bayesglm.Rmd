@@ -1,0 +1,59 @@
+---
+title: "Try Bayesian GLM"
+authour: Y.Nakahashi
+date: 2018-01-12
+output: html_notebook
+---
+** 目的
+Bayesian GLMの検証
+
+```{r}
+library(MASS)
+library(coefplot)
+```
+
+[こちら](https://jaredlander.com/data/ideo.rdata)のリンク先よりサンプルデータを取得する。
+
+```{r}
+load("/Users/nakahashi/Desktop/Git/R_Snippet/Data/ideo.rdata")
+```
+
+mapを使って書き直したい
+
+```{r}
+theYears <- unique(ideo$Year)
+results  <- vector(mode = "list", length = length(theYears))
+names(results) <- theYears
+for (i in theYears) {
+   results[[as.character(i)]] <- 
+      glm(Vote ~ Race + Income + Gender + Education, 
+          data = ideo, subset = Year == i, family = binomial(link = "logit"))
+}
+voteInfo <- multiplot(results, coefficients = "Raceblack", plot = FALSE)
+head(voteInfo)
+```
+
+```{r}
+multiplot(results, coefficients = "Raceblack", secret.weapon = TRUE) +
+   coord_flip(xlim = c(-20, 10))
+```
+
+```{r}
+resultsB  <- vector(mode = "list", length = length(theYears))
+names(resultsB) <- theYears
+for (i in theYears) {
+   resultsB[[as.character(i)]] <- 
+      arm::bayesglm(Vote ~ Race + Income + Gender + Education, 
+                    data = ideo[ideo$Year == i, ], 
+                    family = binomial(link = "logit"),
+                    prior.scale = 2.5, prior.df = 1)
+}
+
+multiplot(resultsB, coefficients = "Raceblack", secret.weapon = TRUE) +
+   coord_flip(xlim = c(-20, 10))
+
+```
+
+
+
+
