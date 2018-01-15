@@ -4,56 +4,152 @@ authour: Y.Nakahashi
 date: 2018-01-12
 output: html_notebook
 ---
-** 目的
-Bayesian GLMの検証
+## 目的
+書籍「みんなのR」で紹介のあったBayesian GLMを追ってみる。
+
+#### ライブラリの読み込み
+Bayesian GLMのための関数*bayesglm*は{arm}にあるが、{coefplot}とnamespaceが衝突するためarm::bayesglmで実行することとする。
 
 ```{r}
 library(MASS)
 library(coefplot)
+library(tidyverse)
 ```
 
-[こちら](https://jaredlander.com/data/ideo.rdata)のリンク先よりサンプルデータを取得する。
+#### データのロード
+「みんなのR」の著者が公開しているサンプルデータを[こちら](https://jaredlander.com/data/ideo.rdata)のリンク先から取得し、適当な場所に保存する（*url*を使って*load*したがうまくいかなかった）。
 
 ```{r}
 load("/Users/nakahashi/Desktop/Git/R_Snippet/Data/ideo.rdata")
 ```
 
-mapを使って書き直したい
+#### フィッティング
+まずは問題点を明らかにするために*glm*でフィッティングする。ideo$Yearごとに同じモデルをあてはめるが、いくつかのやり方を試す。
+
+##### 1. glmのsubsetで分割する
+*glm*のオプションsubsetでYearを指定して年ごとにデータを分割する。
 
 ```{r}
-theYears <- unique(ideo$Year)
-results  <- vector(mode = "list", length = length(theYears))
-names(results) <- theYears
+theYears          <- unique(ideo$Year)
+results_01        <- vector(mode = "list", length = length(theYears))
+names(results_01) <- theYears
 for (i in theYears) {
-   results[[as.character(i)]] <- 
+   results_01[[as.character(i)]] <- 
       glm(Vote ~ Race + Income + Gender + Education, 
           data = ideo, subset = Year == i, family = binomial(link = "logit"))
 }
-voteInfo <- multiplot(results, coefficients = "Raceblack", plot = FALSE)
-head(voteInfo)
 ```
 
-```{r}
-multiplot(results, coefficients = "Raceblack", secret.weapon = TRUE) +
-   coord_flip(xlim = c(-20, 10))
-```
+##### 2. purrr::mapを用いる
+同じことをpurrr::mapを使って実行する。
 
 ```{r}
-resultsB  <- vector(mode = "list", length = length(theYears))
-names(resultsB) <- theYears
-for (i in theYears) {
-   resultsB[[as.character(i)]] <- 
-      arm::bayesglm(Vote ~ Race + Income + Gender + Education, 
-                    data = ideo[ideo$Year == i, ], 
-                    family = binomial(link = "logit"),
-                    prior.scale = 2.5, prior.df = 1)
+results_02 <- 
+   ideo %>% 
+   split(.$Year) %>% 
+   map(~glm(Vote ~ Race + Income + Gender + Education, 
+            data = ., family = binomial(link = "logit")))
+```
+
+
+##### 3. tidyr::nestと組み合わせる
+mapに渡すモデルを関数として定義しておく。
+```{r}
+year_model <- function(df) {
+   glm(Vote ~ Race + Income + Gender + Education, 
+       data = df, family = binomial(link = "logit"))
 }
+```
 
-multiplot(resultsB, coefficients = "Raceblack", secret.weapon = TRUE) +
+##### データのグループ化
+分析単位となる変数（Year）で*group_by*し、*nest*で入れ子とする。
+```{r}
+year_data <- 
+   ideo %>% 
+   group_by(Year) %>% 
+   nest()
+```
+
+##### 関数の適用
+このやり方では結果のlistにYearがnamesとして渡らないので、後からつける（少し不安）。
+```{r}
+results_03 <- map(year_data$data, year_model)
+names(results_03) <- as.character(unique(ideo$Year))
+```
+
+#### 結果の確認
+いずれも同じ結果となっている。
+```{r}
+multiplot(results_01, coefficients = "Raceblack", secret.weapon = TRUE) +
    coord_flip(xlim = c(-20, 10))
+multiplot(results_02, coefficients = "Raceblack", secret.weapon = TRUE) +
+   coord_flip(xlim = c(-20, 10))
+multiplot(results_03, coefficients = "Raceblack", secret.weapon = TRUE) +
+   coord_flip(xlim = c(-20, 10))
+```
 
+
+ここで結果をよく見ると1964年の係数とその標準誤差がおかしなことになっている。*multiplot*でplot = FALSEとし、数値を確認する。
+
+```{r}
+(multi_01 <- multiplot(results_01, coefficients = "Raceblack", plot = FALSE))
+```
+
+確かに数値としても他の年と比較して異常となっていることがわかる。では、このような結果が得られたときにどうしたら良いか？その答えの一つが、他の年の効果などから「係数はこの辺りにあるだろう」といった事前知識をモデルに取り込むことである。弱情報事前分布をモデルに取り入れることは、ベイズの観点からは縮小であり、***Bayesian Shrinkage***（ベイズ縮小）と呼ばれる。
+
+#### Bayesian GLMによるフィッティング
+先ほどのモデルに、回帰係数の事前分布として尺度パラメータ2.5のコーシー分布（＝自由度1の$t$分布）を用いる。
+
+```{r}
+results_04 <- 
+   ideo %>% 
+   split(.$Year) %>% 
+   map(~arm::bayesglm(Vote ~ Race + Income + Gender + Education, 
+                      data = ., family = binomial(link = "logit"),
+                      prior.scale = 2.5, prior.df = 1))
+```
+#### 結果の確認
+1964年の異常が解消された。
+
+```{r}
+multiplot(results_04, coefficients = "Raceblack", secret.weapon = TRUE) +
+   coord_flip()
+```
+
+その他の年の係数は大きな変動はない。異常値が解消されたことで係数のバラつきはかなり小さくなった。
+
+```{r}
+multi_04 <- multiplot(results_04, coefficients = "Raceblack", plot = FALSE)
+cbind(sprintf("%.3f", multi_01$Value), sprintf("%.3f", multi_04$Value))
+apply(cbind(multi_01$Value, multi_04$Value), 2, sd)
+```
+
+
+```{r}
+correlate(cbind(multi_01$Value, multi_04$Value)) %>% fashion()
+plot(cbind(multi_01$Value, multi_04$Value))
+```
+
+
+```{r}
+correlate(cbind(multi_01$Value[-5], multi_04$Value[-5])) %>% fashion()
+plot(cbind(multi_01$Value[-5], multi_04$Value[-5]))
 ```
 
 
 
+#### おまけ
+*bayesglm*のオプションにあるprior.scaleとprior.dfを変更することで様々な事前分布を仮定することができる。ここをどちらも$\infty$（Inf）とすると正規分布となり、*glm*の結果と一致する。Yearごとの結果で比較したかったがエラーとなってしまったので、全体のデータに対して確認する。
 
+```{r}
+results_05 <- glm(Vote ~ Race + Income + Gender + Education, 
+                  data = ideo, family = binomial(link = "logit"))
+results_06 <- arm::bayesglm(Vote ~ Race + Income + Gender + Education, 
+                            data = ideo, family = binomial(link = "logit"),
+                            prior.scale = Inf, prior.df = Inf)
+
+# 小数点以下７桁ぐらいまでは一致する
+cbind(sprintf("%.3f", coef(results_05)), sprintf("%.3f", coef(results_06)))
+correlate(cbind(coef(results_05), coef(results_06))) %>% fashion()
+plot(cbind(coef(results_05), coef(results_05)))
+```
