@@ -8,17 +8,16 @@ output: html_notebook
 ### 内容
 [こちらの記事](https://tensorflow.rstudio.com/blog/keras-customer-churn.html)を基にKerasを用いて離反予測を行う。また{lime}による結果の解釈を試みる。
 
-   1. 分析環境設定
-   1. データのロードと前処理
-   1. モデリングと精度評価
-   1. 結果の解釈
+1. 分析環境設定
+1. データのロードと前処理
+1. モデリングと精度評価
+1. 結果の解釈
 
 ### 1. 分析環境設定
 #### 必要なライブラリのインストール
 ```{r}
-pkgs <- c("keras", "lime", "tidyquant", "rsample", "recipes", 
-          "yardstick", "corrr")
-install.packages(pkgs)
+# pkgs <- c("keras", "lime", "tidyquant", "rsample", "recipes", "yardstick", "corrr")
+# install.packages(pkgs)
 ```
 
 #### ライブラリのロード
@@ -33,7 +32,14 @@ library(corrr)
 ```
 
 #### Kerasのインストール
-初めての場合、結構時間がかかる。
+初めての場合、結構時間がかかる。以下のエラーが出た。そのまま対応。
+
+> エラー: Prerequisites for installing TensorFlow not available. Execute the
+> following at a terminal to install the prerequisites:
+
+> $ sudo /usr/bin/easy_install pip
+
+> $ sudo /usr/local/bin/pip install --upgrade virtualenv
 
 ```{r}
 # install_keras()
@@ -46,7 +52,7 @@ library(corrr)
 IBM Watson Telco Datasetとして公開されているデータを使用する。
 
 ```{r}
-churn_data_raw <- read_csv("/Users/ynakahashi/Desktop/ynakahashi_git/R_Snippet/Data/WA_Fn-UseC_-Telco-Customer-Churn.csv")
+churn_data_raw <- read_csv("/Users/nakahashi/Desktop/Git/R_Snippet/Data/WA_Fn-UseC_-Telco-Customer-Churn.csv")
 glimpse(churn_data_raw)
 ```
 
@@ -168,6 +174,7 @@ model_keras
 ### フィッティング
 上記のモデルに従いフィッティングを行う。
 ```{r}
+set.seed(123)
 history <- fit(
    object           = model_keras, 
    x                = as.matrix(x_train_tbl), 
@@ -253,7 +260,7 @@ predict_model(x = model_keras, newdata = x_test_tbl, type = 'raw') %>%
    tibble::as_tibble()
 
 # Run lime() on training set
-explainer <- lime::lime(
+explainer <- lime(
    x              = x_train_tbl, 
    model          = model_keras, 
    bin_continuous = FALSE
@@ -263,6 +270,7 @@ explainer <- lime::lime(
 explanation <- lime::explain(
    x_test_tbl[1:10, ], 
    explainer    = explainer, 
+   # labels       = 1,
    n_labels     = 1, 
    n_features   = 4,
    kernel_width = 0.5
