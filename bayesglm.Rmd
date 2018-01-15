@@ -149,7 +149,7 @@ results_06 <- arm::bayesglm(Vote ~ Race + Income + Gender + Education,
                             prior.scale = Inf, prior.df = Inf)
 
 # 小数点以下７桁ぐらいまでは一致する
-cbind(sprintf("%.3f", coef(results_05)), sprintf("%.3f", coef(results_06)))
+cbind(sprintf("%.7f", coef(results_05)), sprintf("%.7f", coef(results_06)))
 correlate(cbind(coef(results_05), coef(results_06))) %>% fashion()
 plot(cbind(coef(results_05), coef(results_05)))
 ```
