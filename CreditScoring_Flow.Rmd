@@ -38,7 +38,7 @@ output: html_notebook
 ```{r}
 library(tidyverse)
 library(ggplot2)
-# Work_Dir   <- "/Users/nakahashi/Desktop/GitTest/R_Snippet/"
+Work_Dir   <- "/Users/nakahashi/Desktop/Git/R_Snippet/"
 Work_Dir   <- "/Users/yn250006/Desktop/Git/R_Snippet/"
 File_Name  <- "Data/credit_data_track2_part_A.CSV"
 Dat_Sample <- read_csv(paste0(Work_Dir, File_Name), 
@@ -54,8 +54,8 @@ glimpse(Dat_Sample)
 分布の確認は数値型変数ではヒストグラム、カテゴリ型では度数分布を見るのが基本である。そこで各変数を数値型とカテゴリ型に分類する。なおデータの読み込み時に<i>readr::read_csv</i>ではなく<i>base::read.csv</i>を用いている場合、デフォルトではカテゴリ型と見なされる列はfactorとして読み込まれる。これを避けるには<i>stringsAsFactors</i>オプションを<i>FALSE</i>にしておく。
 
 ```{r}
-Var_Num  <- colnames(Dat_Sample)[sapply(Dat_Sample, is_numeric)]
-Var_Char <- colnames(Dat_Sample)[sapply(Dat_Sample, is_character)]
+Var_Num  <- colnames(Dat_Sample)[sapply(Dat_Sample, is.numeric)]
+Var_Char <- colnames(Dat_Sample)[sapply(Dat_Sample, is.character)]
 ```
 
 数値型変数についてヒストグラムを描く。
@@ -198,31 +198,56 @@ Dat_Train <- Dat_Ana[rownames(Dat_Ana) %in% Train, ]
 Dat_Test  <- Dat_Ana[!rownames(Dat_Ana) %in% Train, ] 
 ```
 
-まずは標準的なロジスティック回帰。
+まずは標準的なロジスティック回帰を実施する。フルモデルを作成したのち、Stepwiseによって変数の取捨選択を実施する。
 
 ```{r}
 Res_GLM <- glm(accepted ~ ., data = Dat_Train, family = binomial(link = logit))
 Res_Step_GLM <- step(Res_GLM, direction = "both")
-Prds <- predict(Res_Step_GLM, newdata = Dat_Test)
+Prds <- predict(Res_Step_GLM, newdata = Dat_Test, type = "response")
 ```
+
+二値分類では、モデルの性能評価としてROC曲線を描くことが一般的に行われる。*pROC::roc*を使ってグラフを描いてみよう。
 
 ```{r}
 library(pROC)
 ROC_GLM <- roc(Dat_Test$accepted, Prds)
-# 226 0.4229962   226
-AUC_GLM <- auc(ROC_GLM)
-print(AUC_GLM)
-GLM_PredictClass <- ifelse(Prds > 0.4229962, 1, 0)
+plot(ROC_GLM, legacy.axes = T, print.thres = T)
 ```
 
-機械学習系のアルゴリズムを用いてみる。
-アルゴリズムとしてはランダムフォレストとXgboostぐらい。
+最適なカットオフ値は0.272のようである。またこのときの各精度指標は以下のように得られる。
+
+```{r}
+res_acc <- 
+   coords(ROC_GLM, x = "best", 
+          ret = c("threshold", "sensitivity", "specificity", "ppv", "npv"),
+          best.method = "closest.topleft")
+res_acc
+```
+
+```{r}
+GLM_PredictClass <- if_else(Prds > res_acc[1], 1, 0)
+```
+
+
+
+またROC曲線の下部の面積は、**AUC**(*Area Under Curve*)を呼ばれ、モデルの評価指標として用いられる。
+AUCは*pROC::auc*で求めることができる。
+
+```{r}
+AUC_GLM <- auc(ROC_GLM)
+print(AUC_GLM)
+```
+
+
+
+今度は機械学習系のアルゴリズムを用いてみよう。アルゴリズムとしてはランダムフォレストとXgboostを選択する。並列処理を行うために以下のように準備する。
 
 ```{r}
 library(doParallel)
 cl <- makePSOCKcluster(4)
 registerDoParallel(cl)
 ```
+
 
 ```{r}
 set.seed(123)
@@ -237,23 +262,22 @@ Res_RF <- train(
 RF_PredictClass <- predict(Res_RF, Dat_Test)
 ```
 
-
-Xgboostにも挑戦。
+Xgboostにも挑戦してみよう。
 
 ```{r}
-# set.seed(123)
-# Res_XB <- train(
-#   as.factor(accepted) ~ ., 
-#   data = Dat_Train,
-#   method = "xgbLinear", 
-#   preProcess = c('center', 'scale'),
-#   trControl = trainControl(method = "cv"),
-#   tuneLength = 4
-# )
-# XB_PredictClass <- predict(Res_XB, Dat_Test)
+set.seed(123)
+Res_XB <- train(
+  as.factor(accepted) ~ .,
+  data = Dat_Train,
+  method = "xgbLinear",
+  preProcess = c('center', 'scale'),
+  trControl = trainControl(method = "cv"),
+  tuneLength = 4
+)
+XB_PredictClass <- predict(Res_XB, Dat_Test)
 ```
 
-
+最後にこれらのアルゴリズムによる評価結果を、混同行列（*Confusion Matrix*）で比較してみよう。
 
 ```{r}
 confusionMatrix(GLM_PredictClass, Dat_Test$accepted)
