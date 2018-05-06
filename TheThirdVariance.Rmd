@@ -1,0 +1,56 @@
+---
+title: "The 3rd variance"
+output: html_notebook
+authour: ynakahashi
+date: 2018-04-30
+---
+
+```{r}
+ThirdVar <- function () {
+   nd <- 40 # Number of data
+   ns <- 1000 # Number of sample    
+   ne <- 5000 # Number of future sample 
+   nt <- 10 # Number of simulation time 
+   
+   lpt <- NULL # Average log likelihood
+   lptm <- matrix(rep(0, length = 50 * nt), ncol = nt) # lpt matrix
+   alt <- NULL # alpha 
+
+   for(kkk in 1:nt) {
+      for (ii in 1:50) {
+         alt[ii] <- (ii - 5) * 0.2
+         al <- alt[ii]
+         lp <- 0
+         for (kk in 1:ns) {
+            set.seed(6961 + kk * 13 + kkk * 3)
+            yya <- rnorm(nd, mean = -13, sd = 4)
+            av1 <- mean(yya)
+            sig2a <- sum((yya - av1)^2) / (nd - al)
+            set.seed(6201 + kk * 99 + kkk * 7)
+            yyb <- rnorm(ne, mean = -13, sd = 4)
+            rss1 <- sum((yyb - av1)^2)
+            lp <- -0.5 * ne * log(2 * pi) - 0.5 * ne * log(sig2a) - 
+               0.5 * rss1/sig2a + lp
+         }
+         lpt[ii] <- lp/ns/ne
+      }
+      lptm[, kkk] <- lpt
+   }
+   par(mfrow = c(1, 1), mai = c(1, 1, 0.2, 0.2), oma = c(1, 1, 1, 1), cex = 1.5)
+   plot(alt, lpt, type = "n", ylim = c(-2.84, -2.825), mgp = c(2,1,0))
+   for(kkk in 1:nt){
+      lpt <- lptm[, kkk]
+      points(alt, lpt)
+      lines(alt, lpt)
+      lptmax <- max(lpt)
+      altmax <- alt[lptmax == lpt]
+      points(altmax, lptmax, pch = 2, cex = 2)
+   }
+}
+```
+
+
+```{r}
+ThirdVar()
+```
+
