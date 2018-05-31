@@ -173,33 +173,34 @@ $(document).ready(function () {
 
 
 <!-- rnb-text-begin -->
-<div class="section level2">
-<h2>背景</h2>
+<p>[:contents]</p>
+<div class="section level3">
+<h3>背景</h3>
 <p>通常、私はデータを分析する際には主にRを使用します。しかし分析結果を既存のシステムに投入するなど実装を考えた場合には、Rではなく別の言語を求められることもあると思います。 今回、RとPythonのそれぞれでGLMを実行したときに結果が一致するのかを検証する機会があったため、その内容を備忘がてら紹介しておきます。</p>
 </div>
-<div id="rpython" class="section level2">
-<h2>0. RからPythonを呼び出す準備</h2>
-<p>RからPythonを呼び出すためのライブラリ<code>reticulate</code>を使用する。MacユーザーでPython環境としてanacondaをインストールしている場合はpythonを呼び出す際に注意が必要。 .Rprofileに以下を記載。 Sys.setenv(PATH = paste(“/anaconda3/bin”, Sys.getenv(“PATH”), sep=“:”))</p>
+<div id="rpython" class="section level3">
+<h3>RからPythonを呼び出す</h3>
+<p>今回の検証では、RからPythonを呼び出すためのライブラリ<code>reticulate</code>を使用しました。RStudioからR Notebookとして使えば、chunkごとにRとPythonを切り替えることができて大変便利です。 なおMacユーザーでPython環境としてAnacondaをインストールしている場合、.Rprofileに以下を記載しておくことでAnaconda配下のPythonを呼び出すことができます。</p>
+<pre><code>Sys.setenv(PATH = paste(&quot;/anaconda3/bin&quot;, Sys.getenv(&quot;PATH&quot;), sep=&quot;:&quot;))</code></pre>
+<p>では早速<code>reticulate</code>をインストールし、Pythonを呼び出せるか試してみましょう。</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyBpbnN0YWxsLnBhY2thZ2VzKFwicmV0aWN1bGF0ZVwiKVxubGlicmFyeShyZXRpY3VsYXRlKVxuc3lzdGVtKFwicHl0aG9uIC0tdmVyc2lvblwiKVxuYGBgIn0= -->
-<pre class="r"><code># install.packages(&quot;reticulate&quot;)
-library(reticulate)
-system(&quot;python --version&quot;)</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3lzdGVtKFwicHl0aG9uIC0tdmVyc2lvblwiKVxuXG5gYGAifQ== -->
+<pre class="r"><code>system(&quot;python --version&quot;)
+</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiUHl0aG9uIDMuNi40IDo6IEFuYWNvbmRhIGN1c3RvbSAoNjQtYml0KVxuIn0= -->
-<pre><code>Python 3.6.4 :: Anaconda custom (64-bit)</code></pre>
-<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
+<p>このような表示が出れば成功です。</p>
 </div>
-<div id="r-glm-vs-python-statsmodels" class="section level2">
-<h2>1. R glm vs Python statsmodels</h2>
-<p>irisのデータを用いて線形回帰をかける</p>
+<div id="r-glm-vs-python-statsmodels" class="section level3">
+<h3>R glm vs Python statsmodels</h3>
+<p>まずはじめに、irisのデータを用いて線形回帰をかけてみます。Rでは以下のように書くことができます。</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZ2xtKFNlcGFsLkxlbmd0aCB+IFBldGFsLkxlbmd0aCwgZGF0YSA9IGlyaXMsIGZhbWlseSA9IGdhdXNzaWFuKVxuYGBgIn0= -->
-<pre class="r"><code>glm(Sepal.Length ~ Petal.Length, data = iris, family = gaussian)</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZ2xtKFNlcGFsLkxlbmd0aCB+IFBldGFsLkxlbmd0aCwgZGF0YSA9IGlyaXMsIGZhbWlseSA9IGdhdXNzaWFuKVxuXG5gYGAifQ== -->
+<pre class="r"><code>glm(Sepal.Length ~ Petal.Length, data = iris, family = gaussian)
+</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-output-begin eyJkYXRhIjoiXG5DYWxsOiAgZ2xtKGZvcm11bGEgPSBTZXBhbC5MZW5ndGggfiBQZXRhbC5MZW5ndGgsIGZhbWlseSA9IGdhdXNzaWFuLCBcbiAgICBkYXRhID0gaXJpcylcblxuQ29lZmZpY2llbnRzOlxuIChJbnRlcmNlcHQpICBQZXRhbC5MZW5ndGggIFxuICAgICAgNC4zMDY2ICAgICAgICAwLjQwODkgIFxuXG5EZWdyZWVzIG9mIEZyZWVkb206IDE0OSBUb3RhbCAoaS5lLiBOdWxsKTsgIDE0OCBSZXNpZHVhbFxuTnVsbCBEZXZpYW5jZTpcdCAgICAxMDIuMiBcblJlc2lkdWFsIERldmlhbmNlOiAyNC41MyBcdEFJQzogMTYwXG4ifQ== -->
 <pre><code>
@@ -216,19 +217,20 @@ Residual Deviance: 24.53    AIC: 160</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-<p>Pythonのstatsmodelsを使って同じように書くと、結果が異なる</p>
+<p>上記をPythonの<code>statsmodels</code>を使って同じように書いてみましょう。irisのデータは事前にRから書き出しておいたものを使用することとし、<code>pandas</code>の<em>read_csv</em>で読み込みます。そのデータを<code>statsmodels</code>の<em>GLM</em>に渡します。</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgcHl0aG9uXG5pbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtXG5pbXBvcnQgcGFuZGFzIGFzIHBkXG5cbmlyaXMgPSBwZC5yZWFkX2NzdihcIi9Vc2Vycy95bjI1MDAwNi9EZXNrdG9wL09uZURyaXZlIC0gVGVyYWRhdGEvUHJvamVjdC8wMV9GaW5hbmNlLzA0X01penVoby9Xb3JrLzIwMTgwNTE2X0hvd190b19SL2lyaXMuY3N2XCIpXG5cbnJlc19pcmlzID0gc20uR0xNKGlyaXNbJ1NlcGFsLkxlbmd0aCddLCBpcmlzWydQZXRhbC5MZW5ndGgnXSwgZmFtaWx5PXNtLmZhbWlsaWVzLkdhdXNzaWFuKCkpLmZpdCgpXG5wcmludChyZXNfaXJpcy5zdW1tYXJ5KCkpXG5gYGAifQ== -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgcHl0aG9uXG5pbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtXG5pbXBvcnQgcGFuZGFzIGFzIHBkXG5cbmlyaXMgPSBwZC5yZWFkX2NzdihcIi9Vc2Vycy95bjI1MDAwNi9EZXNrdG9wL09uZURyaXZlIC0gVGVyYWRhdGEvUHJvamVjdC8wMV9GaW5hbmNlLzA0X01penVoby9Xb3JrLzIwMTgwNTE2X0hvd190b19SL2lyaXMuY3N2XCIpXG5cbnJlc19pcmlzID0gc20uR0xNKGlyaXNbJ1NlcGFsLkxlbmd0aCddLCBpcmlzWydQZXRhbC5MZW5ndGgnXSwgXG5mYW1pbHkgPSBzbS5mYW1pbGllcy5HYXVzc2lhbigpKS5maXQoKVxucHJpbnQocmVzX2lyaXMuc3VtbWFyeSgpKVxuYGBgIn0= -->
 <pre class="python"><code>import statsmodels.api as sm
 import pandas as pd
 
 iris = pd.read_csv(&quot;/Users/yn250006/Desktop/OneDrive - Teradata/Project/01_Finance/04_Mizuho/Work/20180516_How_to_R/iris.csv&quot;)
 
-res_iris = sm.GLM(iris['Sepal.Length'], iris['Petal.Length'], family=sm.families.Gaussian()).fit()
+res_iris = sm.GLM(iris['Sepal.Length'], iris['Petal.Length'], 
+family = sm.families.Gaussian()).fit()
 print(res_iris.summary())</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgICAgICAgICBHZW5lcmFsaXplZCBMaW5lYXIgTW9kZWwgUmVncmVzc2lvbiBSZXN1bHRzICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbkRlcC4gVmFyaWFibGU6ICAgICAgICAgICBTZXBhbC5MZW5ndGggICBOby4gT2JzZXJ2YXRpb25zOiAgICAgICAgICAgICAgICAgIDE1MFxuTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIEdMTSAgIERmIFJlc2lkdWFsczogICAgICAgICAgICAgICAgICAgICAgMTQ5XG5Nb2RlbCBGYW1pbHk6ICAgICAgICAgICAgICAgIEdhdXNzaWFuICAgRGYgTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIDBcbkxpbmsgRnVuY3Rpb246ICAgICAgICAgICAgICAgaWRlbnRpdHkgICBTY2FsZTogICAgICAgICAgICAgICAzLjUyMTM2NzI2MjQwMzM5OFxuTWV0aG9kOiAgICAgICAgICAgICAgICAgICAgICAgICAgSVJMUyAgIExvZy1MaWtlbGlob29kOiAgICAgICAgICAgICAgICAtMzA2Ljc1XG5EYXRlOiAgICAgICAgICAgICAgICBXZWQsIDMwIE1heSAyMDE4ICAgRGV2aWFuY2U6ICAgICAgICAgICAgICAgICAgICAgICA1MjQuNjhcblRpbWU6ICAgICAgICAgICAgICAgICAgICAgICAgMTM6Mjc6MDMgICBQZWFyc29uIGNoaTI6ICAgICAgICAgICAgICAgICAgICAgNTI1LlxuTm8uIEl0ZXJhdGlvbnM6ICAgICAgICAgICAgICAgICAgICAgMiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuICAgICAgICAgICAgICAgICAgIGNvZWYgICAgc3RkIGVyciAgICAgICAgICB6ICAgICAgUD58enwgICAgICBbMC4wMjUgICAgICAwLjk3NV1cbi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tXG5QZXRhbC5MZW5ndGggICAgIDEuMzQ4OSAgICAgIDAuMDM3ICAgICAzNi41MzAgICAgICAwLjAwMCAgICAgICAxLjI3NyAgICAgICAxLjQyMVxuPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiJ9 -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgICAgICAgICBHZW5lcmFsaXplZCBMaW5lYXIgTW9kZWwgUmVncmVzc2lvbiBSZXN1bHRzICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbkRlcC4gVmFyaWFibGU6ICAgICAgICAgICBTZXBhbC5MZW5ndGggICBOby4gT2JzZXJ2YXRpb25zOiAgICAgICAgICAgICAgICAgIDE1MFxuTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIEdMTSAgIERmIFJlc2lkdWFsczogICAgICAgICAgICAgICAgICAgICAgMTQ5XG5Nb2RlbCBGYW1pbHk6ICAgICAgICAgICAgICAgIEdhdXNzaWFuICAgRGYgTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIDBcbkxpbmsgRnVuY3Rpb246ICAgICAgICAgICAgICAgaWRlbnRpdHkgICBTY2FsZTogICAgICAgICAgICAgICAzLjUyMTM2NzI2MjQwMzM5OFxuTWV0aG9kOiAgICAgICAgICAgICAgICAgICAgICAgICAgSVJMUyAgIExvZy1MaWtlbGlob29kOiAgICAgICAgICAgICAgICAtMzA2Ljc1XG5EYXRlOiAgICAgICAgICAgICAgICBUaHUsIDMxIE1heSAyMDE4ICAgRGV2aWFuY2U6ICAgICAgICAgICAgICAgICAgICAgICA1MjQuNjhcblRpbWU6ICAgICAgICAgICAgICAgICAgICAgICAgMTM6MzQ6NDEgICBQZWFyc29uIGNoaTI6ICAgICAgICAgICAgICAgICAgICAgNTI1LlxuTm8uIEl0ZXJhdGlvbnM6ICAgICAgICAgICAgICAgICAgICAgMiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuICAgICAgICAgICAgICAgICAgIGNvZWYgICAgc3RkIGVyciAgICAgICAgICB6ICAgICAgUD58enwgICAgICBbMC4wMjUgICAgICAwLjk3NV1cbi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tXG5QZXRhbC5MZW5ndGggICAgIDEuMzQ4OSAgICAgIDAuMDM3ICAgICAzNi41MzAgICAgICAwLjAwMCAgICAgICAxLjI3NyAgICAgICAxLjQyMVxuPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiJ9 -->
 <pre><code>                 Generalized Linear Model Regression Results                  
 ==============================================================================
 Dep. Variable:           Sepal.Length   No. Observations:                  150
@@ -236,8 +238,8 @@ Model:                            GLM   Df Residuals:                      149
 Model Family:                Gaussian   Df Model:                            0
 Link Function:               identity   Scale:               3.521367262403398
 Method:                          IRLS   Log-Likelihood:                -306.75
-Date:                Wed, 30 May 2018   Deviance:                       524.68
-Time:                        13:27:03   Pearson chi2:                     525.
+Date:                Thu, 31 May 2018   Deviance:                       524.68
+Time:                        13:34:41   Pearson chi2:                     525.
 No. Iterations:                     2                                         
 ================================================================================
                    coef    std err          z      P&gt;|z|      [0.025      0.975]
@@ -251,19 +253,21 @@ Petal.Length     1.3489      0.037     36.530      0.000       1.277       1.421
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-<p>statsmodelsではデフォルトで切片が入らないので、add_constanが必要</p>
+<p>ひとまず分析を実行することはできたようですが、Rの結果とは違いますね。出力されたテーブルの下部にある「coef」を見てみると、切片が出力されていません。<code>statsmodels</code>はデフォルトでは切片が入らないようです。</p>
+<p><code>statsmodels</code>で切片を追加するにはadd_constantを使います。以下のように修正しましょう。</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgcHl0aG9uXG5pbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtXG5pbXBvcnQgcGFuZGFzIGFzIHBkXG5cbmlyaXMgPSBwZC5yZWFkX2NzdihcIi9Vc2Vycy95bjI1MDAwNi9EZXNrdG9wL09uZURyaXZlIC0gVGVyYWRhdGEvUHJvamVjdC8wMV9GaW5hbmNlLzA0X01penVoby9Xb3JrLzIwMTgwNTE2X0hvd190b19SL2lyaXMuY3N2XCIpXG5cbnJlc19pcmlzXzIgPSBzbS5HTE0oaXJpc1snU2VwYWwuTGVuZ3RoJ10sIHNtLmFkZF9jb25zdGFudChpcmlzWydQZXRhbC5MZW5ndGgnXSksIGZhbWlseT1zbS5mYW1pbGllcy5HYXVzc2lhbigpKS5maXQoKVxucHJpbnQocmVzX2lyaXNfMi5zdW1tYXJ5KCkpXG5gYGAifQ== -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgcHl0aG9uXG5pbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtXG5pbXBvcnQgcGFuZGFzIGFzIHBkXG5cbmlyaXMgPSBwZC5yZWFkX2NzdihcIi9Vc2Vycy95bjI1MDAwNi9EZXNrdG9wL09uZURyaXZlIC0gVGVyYWRhdGEvUHJvamVjdC8wMV9GaW5hbmNlLzA0X01penVoby9Xb3JrLzIwMTgwNTE2X0hvd190b19SL2lyaXMuY3N2XCIpXG5cbnJlc19pcmlzXzIgPSBzbS5HTE0oaXJpc1snU2VwYWwuTGVuZ3RoJ10sIHNtLmFkZF9jb25zdGFudChpcmlzWydQZXRhbC5MZW5ndGgnXSksIFxuZmFtaWx5ID0gc20uZmFtaWxpZXMuR2F1c3NpYW4oKSkuZml0KClcbnByaW50KHJlc19pcmlzXzIuc3VtbWFyeSgpKVxuYGBgIn0= -->
 <pre class="python"><code>import statsmodels.api as sm
 import pandas as pd
 
 iris = pd.read_csv(&quot;/Users/yn250006/Desktop/OneDrive - Teradata/Project/01_Finance/04_Mizuho/Work/20180516_How_to_R/iris.csv&quot;)
 
-res_iris_2 = sm.GLM(iris['Sepal.Length'], sm.add_constant(iris['Petal.Length']), family=sm.families.Gaussian()).fit()
+res_iris_2 = sm.GLM(iris['Sepal.Length'], sm.add_constant(iris['Petal.Length']), 
+family = sm.families.Gaussian()).fit()
 print(res_iris_2.summary())</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgICAgICAgICAgR2VuZXJhbGl6ZWQgTGluZWFyIE1vZGVsIFJlZ3Jlc3Npb24gUmVzdWx0cyAgICAgICAgICAgICAgICAgIFxuPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuRGVwLiBWYXJpYWJsZTogICAgICAgICAgIFNlcGFsLkxlbmd0aCAgIE5vLiBPYnNlcnZhdGlvbnM6ICAgICAgICAgICAgICAgICAgIDE1MFxuTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIEdMTSAgIERmIFJlc2lkdWFsczogICAgICAgICAgICAgICAgICAgICAgIDE0OFxuTW9kZWwgRmFtaWx5OiAgICAgICAgICAgICAgICBHYXVzc2lhbiAgIERmIE1vZGVsOiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMVxuTGluayBGdW5jdGlvbjogICAgICAgICAgICAgICBpZGVudGl0eSAgIFNjYWxlOiAgICAgICAgICAgICAgMC4xNjU3MDk2ODc2MDY5NzEzM1xuTWV0aG9kOiAgICAgICAgICAgICAgICAgICAgICAgICAgSVJMUyAgIExvZy1MaWtlbGlob29kOiAgICAgICAgICAgICAgICAgLTc3LjAyMFxuRGF0ZTogICAgICAgICAgICAgICAgV2VkLCAzMCBNYXkgMjAxOCAgIERldmlhbmNlOiAgICAgICAgICAgICAgICAgICAgICAgIDI0LjUyNVxuVGltZTogICAgICAgICAgICAgICAgICAgICAgICAxMzoyNzowNSAgIFBlYXJzb24gY2hpMjogICAgICAgICAgICAgICAgICAgICAgMjQuNVxuTm8uIEl0ZXJhdGlvbnM6ICAgICAgICAgICAgICAgICAgICAgMiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIFxuPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiAgICAgICAgICAgICAgICAgICBjb2VmICAgIHN0ZCBlcnIgICAgICAgICAgeiAgICAgIFA+fHp8ICAgICAgWzAuMDI1ICAgICAgMC45NzVdXG4tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLVxuY29uc3QgICAgICAgICAgICA0LjMwNjYgICAgICAwLjA3OCAgICAgNTQuOTM5ICAgICAgMC4wMDAgICAgICAgNC4xNTMgICAgICAgNC40NjBcblBldGFsLkxlbmd0aCAgICAgMC40MDg5ICAgICAgMC4wMTkgICAgIDIxLjY0NiAgICAgIDAuMDAwICAgICAgIDAuMzcyICAgICAgIDAuNDQ2XG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuIn0= -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgICAgICAgICAgR2VuZXJhbGl6ZWQgTGluZWFyIE1vZGVsIFJlZ3Jlc3Npb24gUmVzdWx0cyAgICAgICAgICAgICAgICAgIFxuPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuRGVwLiBWYXJpYWJsZTogICAgICAgICAgIFNlcGFsLkxlbmd0aCAgIE5vLiBPYnNlcnZhdGlvbnM6ICAgICAgICAgICAgICAgICAgIDE1MFxuTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIEdMTSAgIERmIFJlc2lkdWFsczogICAgICAgICAgICAgICAgICAgICAgIDE0OFxuTW9kZWwgRmFtaWx5OiAgICAgICAgICAgICAgICBHYXVzc2lhbiAgIERmIE1vZGVsOiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMVxuTGluayBGdW5jdGlvbjogICAgICAgICAgICAgICBpZGVudGl0eSAgIFNjYWxlOiAgICAgICAgICAgICAgMC4xNjU3MDk2ODc2MDY5NzEzM1xuTWV0aG9kOiAgICAgICAgICAgICAgICAgICAgICAgICAgSVJMUyAgIExvZy1MaWtlbGlob29kOiAgICAgICAgICAgICAgICAgLTc3LjAyMFxuRGF0ZTogICAgICAgICAgICAgICAgVGh1LCAzMSBNYXkgMjAxOCAgIERldmlhbmNlOiAgICAgICAgICAgICAgICAgICAgICAgIDI0LjUyNVxuVGltZTogICAgICAgICAgICAgICAgICAgICAgICAxMzozNzoyNiAgIFBlYXJzb24gY2hpMjogICAgICAgICAgICAgICAgICAgICAgMjQuNVxuTm8uIEl0ZXJhdGlvbnM6ICAgICAgICAgICAgICAgICAgICAgMiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIFxuPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiAgICAgICAgICAgICAgICAgICBjb2VmICAgIHN0ZCBlcnIgICAgICAgICAgeiAgICAgIFA+fHp8ICAgICAgWzAuMDI1ICAgICAgMC45NzVdXG4tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLVxuY29uc3QgICAgICAgICAgICA0LjMwNjYgICAgICAwLjA3OCAgICAgNTQuOTM5ICAgICAgMC4wMDAgICAgICAgNC4xNTMgICAgICAgNC40NjBcblBldGFsLkxlbmd0aCAgICAgMC40MDg5ICAgICAgMC4wMTkgICAgIDIxLjY0NiAgICAgIDAuMDAwICAgICAgIDAuMzcyICAgICAgIDAuNDQ2XG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuIn0= -->
 <pre><code>                  Generalized Linear Model Regression Results                  
 ===============================================================================
 Dep. Variable:           Sepal.Length   No. Observations:                   150
@@ -271,8 +275,8 @@ Model:                            GLM   Df Residuals:                       148
 Model Family:                Gaussian   Df Model:                             1
 Link Function:               identity   Scale:              0.16570968760697133
 Method:                          IRLS   Log-Likelihood:                 -77.020
-Date:                Wed, 30 May 2018   Deviance:                        24.525
-Time:                        13:27:05   Pearson chi2:                      24.5
+Date:                Thu, 31 May 2018   Deviance:                        24.525
+Time:                        13:37:26   Pearson chi2:                      24.5
 No. Iterations:                     2                                          
 ================================================================================
                    coef    std err          z      P&gt;|z|      [0.025      0.975]
@@ -287,10 +291,10 @@ Petal.Length     0.4089      0.019     21.646      0.000       0.372       0.446
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-</div>
-<div id="r-glm-vs-python-statsmodels" class="section level2">
-<h2>2. R glm vs Python statsmodels(再)</h2>
-<p>Titanicのデータを用いてロジスティック回帰をかける</p>
+<p>無事、Rの結果と一致しました。</p>
+<div id="r-glm-vs-python-statsmodels" class="section level4">
+<h4>R glm vs Python statsmodels(再)</h4>
+<p>続いてTitanicのデータを用いてロジスティック回帰をかけてみます。Titanicのデータは</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudG1wIDwtIGRhdGEuZnJhbWUoVGl0YW5pYylcbnRpdGFuaWMgPC0gZGF0YS5mcmFtZShDbGFzcyA9IHJlcCh0bXAkQ2xhc3MsIHRtcCRGcmVxKSwgXG4gICAgICAgICAgICAgICAgICAgICAgU2V4ICAgPSByZXAodG1wJFNleCwgdG1wJEZyZXEpLCBcbiAgICAgICAgICAgICAgICAgICAgICBBZ2UgICA9IHJlcCh0bXAkQWdlLCB0bXAkRnJlcSksIFxuICAgICAgICAgICAgICAgICAgICAgIFN1cnZpdmVkID0gcmVwKHRtcCRTdXJ2aXZlZCwgdG1wJEZyZXEpKVxuc3VtbWFyeShnbG0oU3Vydml2ZWQgfiAuLCBkYXRhID0gdGl0YW5pYywgZmFtaWx5ID0gYmlub21pYWwobGluayA9IFwibG9naXRcIikpKVxuYGBgIn0= -->
@@ -301,35 +305,6 @@ titanic &lt;- data.frame(Class = rep(tmp$Class, tmp$Freq),
                       Survived = rep(tmp$Survived, tmp$Freq))
 summary(glm(Survived ~ ., data = titanic, family = binomial(link = &quot;logit&quot;)))</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiXG5DYWxsOlxuZ2xtKGZvcm11bGEgPSBTdXJ2aXZlZCB+IC4sIGZhbWlseSA9IGJpbm9taWFsKGxpbmsgPSBcImxvZ2l0XCIpLCBcbiAgICBkYXRhID0gdGl0YW5pYylcblxuRGV2aWFuY2UgUmVzaWR1YWxzOiBcbiAgICBNaW4gICAgICAgMVEgICBNZWRpYW4gICAgICAgM1EgICAgICBNYXggIFxuLTIuMDgxMiAgLTAuNzE0OSAgLTAuNjY1NiAgIDAuNjg1OCAgIDIuMTI3OCAgXG5cbkNvZWZmaWNpZW50czpcbiAgICAgICAgICAgIEVzdGltYXRlIFN0ZC4gRXJyb3IgeiB2YWx1ZSBQcig+fHp8KSAgICBcbihJbnRlcmNlcHQpICAgMC42ODUzICAgICAwLjI3MzAgICAyLjUxMCAgIDAuMDEyMSAqICBcbkNsYXNzMm5kICAgICAtMS4wMTgxICAgICAwLjE5NjAgIC01LjE5NCAyLjA1ZS0wNyAqKipcbkNsYXNzM3JkICAgICAtMS43Nzc4ICAgICAwLjE3MTYgLTEwLjM2MiAgPCAyZS0xNiAqKipcbkNsYXNzQ3JldyAgICAtMC44NTc3ICAgICAwLjE1NzMgIC01LjQ1MSA1LjAwZS0wOCAqKipcblNleEZlbWFsZSAgICAgMi40MjAxICAgICAwLjE0MDQgIDE3LjIzNiAgPCAyZS0xNiAqKipcbkFnZUFkdWx0ICAgICAtMS4wNjE1ICAgICAwLjI0NDAgIC00LjM1MCAxLjM2ZS0wNSAqKipcbi0tLVxuU2lnbmlmLiBjb2RlczogIDAg4oCYKioq4oCZIDAuMDAxIOKAmCoq4oCZIDAuMDEg4oCYKuKAmSAwLjA1IOKAmC7igJkgMC4xIOKAmCDigJkgMVxuXG4oRGlzcGVyc2lvbiBwYXJhbWV0ZXIgZm9yIGJpbm9taWFsIGZhbWlseSB0YWtlbiB0byBiZSAxKVxuXG4gICAgTnVsbCBkZXZpYW5jZTogMjc2OS41ICBvbiAyMjAwICBkZWdyZWVzIG9mIGZyZWVkb21cblJlc2lkdWFsIGRldmlhbmNlOiAyMjEwLjEgIG9uIDIxOTUgIGRlZ3JlZXMgb2YgZnJlZWRvbVxuQUlDOiAyMjIyLjFcblxuTnVtYmVyIG9mIEZpc2hlciBTY29yaW5nIGl0ZXJhdGlvbnM6IDRcbiJ9 -->
-<pre><code>
-Call:
-glm(formula = Survived ~ ., family = binomial(link = &quot;logit&quot;), 
-    data = titanic)
-
-Deviance Residuals: 
-    Min       1Q   Median       3Q      Max  
--2.0812  -0.7149  -0.6656   0.6858   2.1278  
-
-Coefficients:
-            Estimate Std. Error z value Pr(&gt;|z|)    
-(Intercept)   0.6853     0.2730   2.510   0.0121 *  
-Class2nd     -1.0181     0.1960  -5.194 2.05e-07 ***
-Class3rd     -1.7778     0.1716 -10.362  &lt; 2e-16 ***
-ClassCrew    -0.8577     0.1573  -5.451 5.00e-08 ***
-SexFemale     2.4201     0.1404  17.236  &lt; 2e-16 ***
-AgeAdult     -1.0615     0.2440  -4.350 1.36e-05 ***
----
-Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-(Dispersion parameter for binomial family taken to be 1)
-
-    Null deviance: 2769.5  on 2200  degrees of freedom
-Residual deviance: 2210.1  on 2195  degrees of freedom
-AIC: 2222.1
-
-Number of Fisher Scoring iterations: 4</code></pre>
-<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <p>Rのformulaと同じように指定するためにstatsmodels.formula.apiを使用する。</p>
@@ -349,40 +324,15 @@ glm_bin = smf.glm(formula = titanic_formula,
                    family = sm.families.Binomial(sm.families.links.logit)).fit()
 print(glm_bin.summary())</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgICAgICAgICAgICAgICAgIEdlbmVyYWxpemVkIExpbmVhciBNb2RlbCBSZWdyZXNzaW9uIFJlc3VsdHMgICAgICAgICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbkRlcC4gVmFyaWFibGU6ICAgICBbJ1N1cnZpdmVkW05vXScsICdTdXJ2aXZlZFtZZXNdJ10gICBOby4gT2JzZXJ2YXRpb25zOiAgICAgICAgICAgICAgICAgMjIwMVxuTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIEdMTSAgIERmIFJlc2lkdWFsczogICAgICAgICAgICAgICAgICAgICAyMTk1XG5Nb2RlbCBGYW1pbHk6ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIEJpbm9taWFsICAgRGYgTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIDVcbkxpbmsgRnVuY3Rpb246ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgbG9naXQgICBTY2FsZTogICAgICAgICAgICAgICAgICAgICAgICAgICAgIDEuMFxuTWV0aG9kOiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgSVJMUyAgIExvZy1MaWtlbGlob29kOiAgICAgICAgICAgICAgICAtMTEwNS4wXG5EYXRlOiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBXZWQsIDMwIE1heSAyMDE4ICAgRGV2aWFuY2U6ICAgICAgICAgICAgICAgICAgICAgICAyMjEwLjFcblRpbWU6ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMTM6Mjc6MDYgICBQZWFyc29uIGNoaTI6ICAgICAgICAgICAgICAgICAyLjI1ZSswM1xuTm8uIEl0ZXJhdGlvbnM6ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgNSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiAgICAgICAgICAgICAgICAgICAgY29lZiAgICBzdGQgZXJyICAgICAgICAgIHogICAgICBQPnx6fCAgICAgIFswLjAyNSAgICAgIDAuOTc1XVxuLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tXG5JbnRlcmNlcHQgICAgICAgIC0yLjA0MzggICAgICAwLjE2OCAgICAtMTIuMTcxICAgICAgMC4wMDAgICAgICAtMi4zNzMgICAgICAtMS43MTVcbkNsYXNzW1QuMm5kXSAgICAgIDEuMDE4MSAgICAgIDAuMTk2ICAgICAgNS4xOTQgICAgICAwLjAwMCAgICAgICAwLjYzNCAgICAgICAxLjQwMlxuQ2xhc3NbVC4zcmRdICAgICAgMS43Nzc4ICAgICAgMC4xNzIgICAgIDEwLjM2MiAgICAgIDAuMDAwICAgICAgIDEuNDQxICAgICAgIDIuMTE0XG5DbGFzc1tULkNyZXddICAgICAwLjg1NzcgICAgICAwLjE1NyAgICAgIDUuNDUxICAgICAgMC4wMDAgICAgICAgMC41NDkgICAgICAgMS4xNjZcblNleFtULk1hbGVdICAgICAgIDIuNDIwMSAgICAgIDAuMTQwICAgICAxNy4yMzYgICAgICAwLjAwMCAgICAgICAyLjE0NSAgICAgICAyLjY5NVxuQWdlW1QuQ2hpbGRdICAgICAtMS4wNjE1ICAgICAgMC4yNDQgICAgIC00LjM1MCAgICAgIDAuMDAwICAgICAgLTEuNTQwICAgICAgLTAuNTgzXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiJ9 -->
-<pre><code>                         Generalized Linear Model Regression Results                         
-=============================================================================================
-Dep. Variable:     ['Survived[No]', 'Survived[Yes]']   No. Observations:                 2201
-Model:                                           GLM   Df Residuals:                     2195
-Model Family:                               Binomial   Df Model:                            5
-Link Function:                                 logit   Scale:                             1.0
-Method:                                         IRLS   Log-Likelihood:                -1105.0
-Date:                               Wed, 30 May 2018   Deviance:                       2210.1
-Time:                                       13:27:06   Pearson chi2:                 2.25e+03
-No. Iterations:                                    5                                         
-=================================================================================
-                    coef    std err          z      P&gt;|z|      [0.025      0.975]
----------------------------------------------------------------------------------
-Intercept        -2.0438      0.168    -12.171      0.000      -2.373      -1.715
-Class[T.2nd]      1.0181      0.196      5.194      0.000       0.634       1.402
-Class[T.3rd]      1.7778      0.172     10.362      0.000       1.441       2.114
-Class[T.Crew]     0.8577      0.157      5.451      0.000       0.549       1.166
-Sex[T.Male]       2.4201      0.140     17.236      0.000       2.145       2.695
-Age[T.Child]     -1.0615      0.244     -4.350      0.000      -1.540      -0.583
-=================================================================================</code></pre>
-<!-- rnb-output-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiL2FuYWNvbmRhMy9saWIvcHl0aG9uMy42L3NpdGUtcGFja2FnZXMvc3RhdHNtb2RlbHMvY29tcGF0L3BhbmRhcy5weTo1NjogRnV0dXJlV2FybmluZzogVGhlIHBhbmRhcy5jb3JlLmRhdGV0b29scyBtb2R1bGUgaXMgZGVwcmVjYXRlZCBhbmQgd2lsbCBiZSByZW1vdmVkIGluIGEgZnV0dXJlIHZlcnNpb24uIFBsZWFzZSB1c2UgdGhlIHBhbmRhcy50c2VyaWVzIG1vZHVsZSBpbnN0ZWFkLlxuICBmcm9tIHBhbmRhcy5jb3JlIGltcG9ydCBkYXRldG9vbHNcbiJ9 -->
-<pre><code>/anaconda3/lib/python3.6/site-packages/statsmodels/compat/pandas.py:56: FutureWarning: The pandas.core.datetools module is deprecated and will be removed in a future version. Please use the pandas.tseries module instead.
-  from pandas.core import datetools</code></pre>
-<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <p>結果が異なる。カテゴリカル変数について、RではFemaleとAdultが推定されているのに対してPythonではMaleとChildが推定されている。これは、<strong>参照列</strong>(Reference)が異なるためである。</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudGl0YW5pYyRTZXggPC0gcmVsZXZlbCh0aXRhbmljJFNleCwgcmVmID0gXCJGZW1hbGVcIilcbnRpdGFuaWMkQWdlIDwtIHJlbGV2ZWwodGl0YW5pYyRBZ2UsIHJlZiA9IFwiQWR1bHRcIilcbmBgYCJ9 -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudGl0YW5pYyRTZXggPC0gcmVsZXZlbCh0aXRhbmljJFNleCwgcmVmID0gXCJGZW1hbGVcIilcbnRpdGFuaWMkQWdlIDwtIHJlbGV2ZWwodGl0YW5pYyRBZ2UsIHJlZiA9IFwiQWR1bHRcIilcbnN1bW1hcnkoZ2xtKFN1cnZpdmVkIH4gLiwgZGF0YSA9IHRpdGFuaWMsIGZhbWlseSA9IGJpbm9taWFsKGxpbmsgPSBcImxvZ2l0XCIpKSlcbmBgYCJ9 -->
 <pre class="r"><code>titanic$Sex &lt;- relevel(titanic$Sex, ref = &quot;Female&quot;)
-titanic$Age &lt;- relevel(titanic$Age, ref = &quot;Adult&quot;)</code></pre>
+titanic$Age &lt;- relevel(titanic$Age, ref = &quot;Adult&quot;)
+summary(glm(Survived ~ ., data = titanic, family = binomial(link = &quot;logit&quot;)))</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
@@ -406,39 +356,14 @@ titanic_formula = &quot;Survived ~ Class + Sex + Age&quot;
 glm_bin_2 = smf.glm(formula = titanic_formula, data = dat, family=sm.families.Binomial(sm.families.links.logit)).fit()
 print(glm_bin_2.summary())</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAgICAgICAgICBHZW5lcmFsaXplZCBMaW5lYXIgTW9kZWwgUmVncmVzc2lvbiBSZXN1bHRzICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbkRlcC4gVmFyaWFibGU6ICAgICAgICAgICAgICAgU3Vydml2ZWQgICBOby4gT2JzZXJ2YXRpb25zOiAgICAgICAgICAgICAgICAgMjIwMVxuTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIEdMTSAgIERmIFJlc2lkdWFsczogICAgICAgICAgICAgICAgICAgICAyMTk1XG5Nb2RlbCBGYW1pbHk6ICAgICAgICAgICAgICAgIEJpbm9taWFsICAgRGYgTW9kZWw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgIDVcbkxpbmsgRnVuY3Rpb246ICAgICAgICAgICAgICAgICAgbG9naXQgICBTY2FsZTogICAgICAgICAgICAgICAgICAgICAgICAgICAgIDEuMFxuTWV0aG9kOiAgICAgICAgICAgICAgICAgICAgICAgICAgSVJMUyAgIExvZy1MaWtlbGlob29kOiAgICAgICAgICAgICAgICAtMTEwNS4wXG5EYXRlOiAgICAgICAgICAgICAgICBXZWQsIDMwIE1heSAyMDE4ICAgRGV2aWFuY2U6ICAgICAgICAgICAgICAgICAgICAgICAyMjEwLjFcblRpbWU6ICAgICAgICAgICAgICAgICAgICAgICAgMTM6Mjc6MDcgICBQZWFyc29uIGNoaTI6ICAgICAgICAgICAgICAgICAyLjI1ZSswM1xuTm8uIEl0ZXJhdGlvbnM6ICAgICAgICAgICAgICAgICAgICAgNSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiAgICAgICAgICAgICAgICAgICAgY29lZiAgICBzdGQgZXJyICAgICAgICAgIHogICAgICBQPnx6fCAgICAgIFswLjAyNSAgICAgIDAuOTc1XVxuLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tXG5JbnRlcmNlcHQgICAgICAgICAyLjA0MzggICAgICAwLjE2OCAgICAgMTIuMTcxICAgICAgMC4wMDAgICAgICAgMS43MTUgICAgICAgMi4zNzNcbkNsYXNzW1QuMm5kXSAgICAgLTEuMDE4MSAgICAgIDAuMTk2ICAgICAtNS4xOTQgICAgICAwLjAwMCAgICAgIC0xLjQwMiAgICAgIC0wLjYzNFxuQ2xhc3NbVC4zcmRdICAgICAtMS43Nzc4ICAgICAgMC4xNzIgICAgLTEwLjM2MiAgICAgIDAuMDAwICAgICAgLTIuMTE0ICAgICAgLTEuNDQxXG5DbGFzc1tULkNyZXddICAgIC0wLjg1NzcgICAgICAwLjE1NyAgICAgLTUuNDUxICAgICAgMC4wMDAgICAgICAtMS4xNjYgICAgICAtMC41NDlcblNleFtULk1hbGVdICAgICAgLTIuNDIwMSAgICAgIDAuMTQwICAgIC0xNy4yMzYgICAgICAwLjAwMCAgICAgIC0yLjY5NSAgICAgIC0yLjE0NVxuQWdlW1QuQ2hpbGRdICAgICAgMS4wNjE1ICAgICAgMC4yNDQgICAgICA0LjM1MCAgICAgIDAuMDAwICAgICAgIDAuNTgzICAgICAgIDEuNTQwXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbiJ9 -->
-<pre><code>                 Generalized Linear Model Regression Results                  
-==============================================================================
-Dep. Variable:               Survived   No. Observations:                 2201
-Model:                            GLM   Df Residuals:                     2195
-Model Family:                Binomial   Df Model:                            5
-Link Function:                  logit   Scale:                             1.0
-Method:                          IRLS   Log-Likelihood:                -1105.0
-Date:                Wed, 30 May 2018   Deviance:                       2210.1
-Time:                        13:27:07   Pearson chi2:                 2.25e+03
-No. Iterations:                     5                                         
-=================================================================================
-                    coef    std err          z      P&gt;|z|      [0.025      0.975]
----------------------------------------------------------------------------------
-Intercept         2.0438      0.168     12.171      0.000       1.715       2.373
-Class[T.2nd]     -1.0181      0.196     -5.194      0.000      -1.402      -0.634
-Class[T.3rd]     -1.7778      0.172    -10.362      0.000      -2.114      -1.441
-Class[T.Crew]    -0.8577      0.157     -5.451      0.000      -1.166      -0.549
-Sex[T.Male]      -2.4201      0.140    -17.236      0.000      -2.695      -2.145
-Age[T.Child]      1.0615      0.244      4.350      0.000       0.583       1.540
-=================================================================================</code></pre>
-<!-- rnb-output-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiL2FuYWNvbmRhMy9saWIvcHl0aG9uMy42L3NpdGUtcGFja2FnZXMvc3RhdHNtb2RlbHMvY29tcGF0L3BhbmRhcy5weTo1NjogRnV0dXJlV2FybmluZzogVGhlIHBhbmRhcy5jb3JlLmRhdGV0b29scyBtb2R1bGUgaXMgZGVwcmVjYXRlZCBhbmQgd2lsbCBiZSByZW1vdmVkIGluIGEgZnV0dXJlIHZlcnNpb24uIFBsZWFzZSB1c2UgdGhlIHBhbmRhcy50c2VyaWVzIG1vZHVsZSBpbnN0ZWFkLlxuICBmcm9tIHBhbmRhcy5jb3JlIGltcG9ydCBkYXRldG9vbHNcbiJ9 -->
-<pre><code>/anaconda3/lib/python3.6/site-packages/statsmodels/compat/pandas.py:56: FutureWarning: The pandas.core.datetools module is deprecated and will be removed in a future version. Please use the pandas.tseries module instead.
-  from pandas.core import datetools</code></pre>
-<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <p>これで一致。</p>
 <!-- rnb-text-end -->
 </div>
+</div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiUuOBqFB5dGhvbuOBrue1kOaenOOCkuS4gOiHtOOBleOBm+OBn+OBhCIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKIyMg6IOM5pmvCumAmuW4uOOAgeengeOBr+ODh+ODvOOCv+OCkuWIhuaekOOBmeOCi+mam+OBq+OBr+S4u+OBq1LjgpLkvb/nlKjjgZfjgb7jgZnjgILjgZfjgYvjgZfliIbmnpDntZDmnpzjgpLml6LlrZjjga7jgrfjgrnjg4bjg6DjgavmipXlhaXjgZnjgovjgarjganlrp/oo4XjgpLogIPjgYjjgZ/loLTlkIjjgavjga/jgIFS44Gn44Gv44Gq44GP5Yil44Gu6KiA6Kqe44KS5rGC44KB44KJ44KM44KL44GT44Go44KC44GC44KL44Go5oCd44GE44G+44GZ44CCCuS7iuWbnuOAgVLjgahQeXRob27jga7jgZ3jgozjgZ7jgozjgadHTE3jgpLlrp/ooYzjgZfjgZ/jgajjgY3jgavntZDmnpzjgYzkuIDoh7TjgZnjgovjga7jgYvjgpLmpJzoqLzjgZnjgovmqZ/kvJrjgYzjgYLjgaPjgZ/jgZ/jgoHjgIHjgZ3jga7lhoXlrrnjgpLlgpnlv5jjgYzjgabjgonntLnku4vjgZfjgabjgYrjgY3jgb7jgZnjgIIKCiMjIDAuIFLjgYvjgolQeXRob27jgpLlkbzjgbPlh7rjgZnmupblgpkKClLjgYvjgolQeXRob27jgpLlkbzjgbPlh7rjgZnjgZ/jgoHjga7jg6njgqTjg5bjg6njg6pgcmV0aWN1bGF0ZWDjgpLkvb/nlKjjgZnjgovjgIJNYWPjg6bjg7zjgrbjg7zjgadQeXRob27nkrDlooPjgajjgZfjgaZhbmFjb25kYeOCkuOCpOODs+OCueODiOODvOODq+OBl+OBpuOBhOOCi+WgtOWQiOOBr3B5dGhvbuOCkuWRvOOBs+WHuuOBmemam+OBq+azqOaEj+OBjOW/heimgeOAggouUnByb2ZpbGXjgavku6XkuIvjgpLoqJjovInjgIIKU3lzLnNldGVudihQQVRIID0gcGFzdGUoIi9hbmFjb25kYTMvYmluIiwgU3lzLmdldGVudigiUEFUSCIpLCBzZXA9IjoiKSkKCmBgYHtyfQojIGluc3RhbGwucGFja2FnZXMoInJldGljdWxhdGUiKQpsaWJyYXJ5KHJldGljdWxhdGUpCnN5c3RlbSgicHl0aG9uIC0tdmVyc2lvbiIpCmBgYAoKCiMjIDEuIFIgZ2xtIHZzIFB5dGhvbiBzdGF0c21vZGVscwppcmlz44Gu44OH44O844K/44KS55So44GE44Gm57ea5b2i5Zue5biw44KS44GL44GR44KLCgpgYGB7cn0KZ2xtKFNlcGFsLkxlbmd0aCB+IFBldGFsLkxlbmd0aCwgZGF0YSA9IGlyaXMsIGZhbWlseSA9IGdhdXNzaWFuKQpgYGAKClB5dGhvbuOBrnN0YXRzbW9kZWxz44KS5L2/44Gj44Gm5ZCM44GY44KI44GG44Gr5pu444GP44Go44CB57WQ5p6c44GM55Ww44Gq44KLCgpgYGB7cHl0aG9ufQppbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtCmltcG9ydCBwYW5kYXMgYXMgcGQKCmlyaXMgPSBwZC5yZWFkX2NzdigiL1VzZXJzL3luMjUwMDA2L0Rlc2t0b3AvT25lRHJpdmUgLSBUZXJhZGF0YS9Qcm9qZWN0LzAxX0ZpbmFuY2UvMDRfTWl6dWhvL1dvcmsvMjAxODA1MTZfSG93X3RvX1IvaXJpcy5jc3YiKQoKcmVzX2lyaXMgPSBzbS5HTE0oaXJpc1snU2VwYWwuTGVuZ3RoJ10sIGlyaXNbJ1BldGFsLkxlbmd0aCddLCBmYW1pbHk9c20uZmFtaWxpZXMuR2F1c3NpYW4oKSkuZml0KCkKcHJpbnQocmVzX2lyaXMuc3VtbWFyeSgpKQpgYGAKCnN0YXRzbW9kZWxz44Gn44Gv44OH44OV44Kp44Or44OI44Gn5YiH54mH44GM5YWl44KJ44Gq44GE44Gu44Gn44CBYWRkX2NvbnN0YW7jgYzlv4XopoEKCmBgYHtweXRob259CmltcG9ydCBzdGF0c21vZGVscy5hcGkgYXMgc20KaW1wb3J0IHBhbmRhcyBhcyBwZAoKaXJpcyA9IHBkLnJlYWRfY3N2KCIvVXNlcnMveW4yNTAwMDYvRGVza3RvcC9PbmVEcml2ZSAtIFRlcmFkYXRhL1Byb2plY3QvMDFfRmluYW5jZS8wNF9NaXp1aG8vV29yay8yMDE4MDUxNl9Ib3dfdG9fUi9pcmlzLmNzdiIpCgpyZXNfaXJpc18yID0gc20uR0xNKGlyaXNbJ1NlcGFsLkxlbmd0aCddLCBzbS5hZGRfY29uc3RhbnQoaXJpc1snUGV0YWwuTGVuZ3RoJ10pLCBmYW1pbHk9c20uZmFtaWxpZXMuR2F1c3NpYW4oKSkuZml0KCkKcHJpbnQocmVzX2lyaXNfMi5zdW1tYXJ5KCkpCmBgYAoKCiMjIDIuIFIgZ2xtIHZzIFB5dGhvbiBzdGF0c21vZGVscyjlho0pClRpdGFuaWPjga7jg4fjg7zjgr/jgpLnlKjjgYTjgabjg63jgrjjgrnjg4bjgqPjg4Pjgq/lm57luLDjgpLjgYvjgZHjgosKCmBgYHtyfQp0bXAgPC0gZGF0YS5mcmFtZShUaXRhbmljKQp0aXRhbmljIDwtIGRhdGEuZnJhbWUoQ2xhc3MgPSByZXAodG1wJENsYXNzLCB0bXAkRnJlcSksIAogICAgICAgICAgICAgICAgICAgICAgU2V4ICAgPSByZXAodG1wJFNleCwgdG1wJEZyZXEpLCAKICAgICAgICAgICAgICAgICAgICAgIEFnZSAgID0gcmVwKHRtcCRBZ2UsIHRtcCRGcmVxKSwgCiAgICAgICAgICAgICAgICAgICAgICBTdXJ2aXZlZCA9IHJlcCh0bXAkU3Vydml2ZWQsIHRtcCRGcmVxKSkKc3VtbWFyeShnbG0oU3Vydml2ZWQgfiAuLCBkYXRhID0gdGl0YW5pYywgZmFtaWx5ID0gYmlub21pYWwobGluayA9ICJsb2dpdCIpKSkKYGBgCgoKUuOBrmZvcm11bGHjgajlkIzjgZjjgojjgYbjgavmjIflrprjgZnjgovjgZ/jgoHjgatzdGF0c21vZGVscy5mb3JtdWxhLmFwaeOCkuS9v+eUqOOBmeOCi+OAggoKYGBge3B5dGhvbn0KaW1wb3J0IHN0YXRzbW9kZWxzLmFwaSBhcyBzbQppbXBvcnQgc3RhdHNtb2RlbHMuZm9ybXVsYS5hcGkgYXMgc21mCmltcG9ydCBwYW5kYXMgYXMgcGQKaW1wb3J0IG51bXB5IGFzIG5wCgpkYXQgPSBwZC5yZWFkX2NzdigiL1VzZXJzL3luMjUwMDA2L0Rlc2t0b3AvT25lRHJpdmUgLSBUZXJhZGF0YS9Qcm9qZWN0LzAxX0ZpbmFuY2UvMDRfTWl6dWhvL1dvcmsvMjAxODA1MTZfSG93X3RvX1IvdGl0YW5pYy5jc3YiKQpkYXQgPSBkYXQuZHJvcCgnVW5uYW1lZDogMCcsIGF4aXMgPSAxKQp0aXRhbmljX2Zvcm11bGEgPSAiU3Vydml2ZWQgfiBDbGFzcyArIFNleCArIEFnZSIKZ2xtX2JpbiA9IHNtZi5nbG0oZm9ybXVsYSA9IHRpdGFuaWNfZm9ybXVsYSwgCiAgICAgICAgICAgICAgICAgICBkYXRhID0gZGF0LCAKICAgICAgICAgICAgICAgICAgIGZhbWlseSA9IHNtLmZhbWlsaWVzLkJpbm9taWFsKHNtLmZhbWlsaWVzLmxpbmtzLmxvZ2l0KSkuZml0KCkKcHJpbnQoZ2xtX2Jpbi5zdW1tYXJ5KCkpCmBgYAoKCgrntZDmnpzjgYznlbDjgarjgovjgILjgqvjg4bjgrTjg6rjgqvjg6vlpInmlbDjgavjgaTjgYTjgabjgIFS44Gn44GvRmVtYWxl44GoQWR1bHTjgYzmjqjlrprjgZXjgozjgabjgYTjgovjga7jgavlr77jgZfjgaZQeXRob27jgafjga9NYWxl44GoQ2hpbGTjgYzmjqjlrprjgZXjgozjgabjgYTjgovjgILjgZPjgozjga/jgIEqKuWPgueFp+WIlyoqKFJlZmVyZW5jZSnjgYznlbDjgarjgovjgZ/jgoHjgafjgYLjgovjgIIKCgpgYGB7cn0KdGl0YW5pYyRTZXggPC0gcmVsZXZlbCh0aXRhbmljJFNleCwgcmVmID0gIkZlbWFsZSIpCnRpdGFuaWMkQWdlIDwtIHJlbGV2ZWwodGl0YW5pYyRBZ2UsIHJlZiA9ICJBZHVsdCIpCnN1bW1hcnkoZ2xtKFN1cnZpdmVkIH4gLiwgZGF0YSA9IHRpdGFuaWMsIGZhbWlseSA9IGJpbm9taWFsKGxpbmsgPSAibG9naXQiKSkpCmBgYAoKCuWbnuW4sOS/guaVsOOBrue1tuWvvuWApOOBr+WQjOOBmOOBqOOBquOBo+OBn+OBjOOAgeespuWPt+OBjOeVsOOBquOCi+OAguebrueahOWkieaVsOOBp+OBguOCi2BZZXNg44GoYE5vYOOBqOOBhOOBhuaWh+Wtl+WIl+OBjFLjgahQeXRob27jgafliKXjgIXjgavop6Pph4jjgZXjgozjgZ/lj6/og73mgKfjgYzjgYLjgovjgIIKCgpgYGB7cHl0aG9ufQppbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtCmltcG9ydCBzdGF0c21vZGVscy5mb3JtdWxhLmFwaSBhcyBzbWYKaW1wb3J0IHBhbmRhcyBhcyBwZAppbXBvcnQgbnVtcHkgYXMgbnAKCmRhdCA9IHBkLnJlYWRfY3N2KCIvVXNlcnMveW4yNTAwMDYvRGVza3RvcC9PbmVEcml2ZSAtIFRlcmFkYXRhL1Byb2plY3QvMDFfRmluYW5jZS8wNF9NaXp1aG8vV29yay8yMDE4MDUxNl9Ib3dfdG9fUi90aXRhbmljLmNzdiIpCmRhdCA9IGRhdC5kcm9wKCdVbm5hbWVkOiAwJywgYXhpcyA9IDEpCgpkYXRbJ1N1cnZpdmVkJ10gPSBkYXRbJ1N1cnZpdmVkJ10uc3RyLnJlcGxhY2UoJ05vJywgJzAnKQpkYXRbJ1N1cnZpdmVkJ10gPSBkYXRbJ1N1cnZpdmVkJ10uc3RyLnJlcGxhY2UoJ1llcycsICcxJykKZGF0WydTdXJ2aXZlZCddID0gZGF0WydTdXJ2aXZlZCddLmFzdHlwZShucC5pbnQ2NCkKCnRpdGFuaWNfZm9ybXVsYSA9ICJTdXJ2aXZlZCB+IENsYXNzICsgU2V4ICsgQWdlIgpnbG1fYmluXzIgPSBzbWYuZ2xtKGZvcm11bGEgPSB0aXRhbmljX2Zvcm11bGEsIGRhdGEgPSBkYXQsIGZhbWlseT1zbS5mYW1pbGllcy5CaW5vbWlhbChzbS5mYW1pbGllcy5saW5rcy5sb2dpdCkpLmZpdCgpCnByaW50KGdsbV9iaW5fMi5zdW1tYXJ5KCkpCmBgYAoKCuOBk+OCjOOBp+S4gOiHtOOAggo=</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiUuOBqFB5dGhvbuOBrue1kOaenOOCkuS4gOiHtOOBleOBm+OBn+OBhCIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKWzpjb250ZW50c10KCiMjIyDog4zmma8K6YCa5bi444CB56eB44Gv44OH44O844K/44KS5YiG5p6Q44GZ44KL6Zqb44Gr44Gv5Li744GrUuOCkuS9v+eUqOOBl+OBvuOBmeOAguOBl+OBi+OBl+WIhuaekOe1kOaenOOCkuaXouWtmOOBruOCt+OCueODhuODoOOBq+aKleWFpeOBmeOCi+OBquOBqeWun+ijheOCkuiAg+OBiOOBn+WgtOWQiOOBq+OBr+OAgVLjgafjga/jgarjgY/liKXjga7oqIDoqp7jgpLmsYLjgoHjgonjgozjgovjgZPjgajjgoLjgYLjgovjgajmgJ3jgYTjgb7jgZnjgIIK5LuK5Zue44CBUuOBqFB5dGhvbuOBruOBneOCjOOBnuOCjOOBp0dMTeOCkuWun+ihjOOBl+OBn+OBqOOBjeOBq+e1kOaenOOBjOS4gOiHtOOBmeOCi+OBruOBi+OCkuaknOiovOOBmeOCi+apn+S8muOBjOOBguOBo+OBn+OBn+OCgeOAgeOBneOBruWGheWuueOCkuWCmeW/mOOBjOOBpuOCiee0ueS7i+OBl+OBpuOBiuOBjeOBvuOBmeOAggoKCiMjIyBS44GL44KJUHl0aG9u44KS5ZG844Gz5Ye644GZCuS7iuWbnuOBruaknOiovOOBp+OBr+OAgVLjgYvjgolQeXRob27jgpLlkbzjgbPlh7rjgZnjgZ/jgoHjga7jg6njgqTjg5bjg6njg6pgcmV0aWN1bGF0ZWDjgpLkvb/nlKjjgZfjgb7jgZfjgZ/jgIJSU3R1ZGlv44GL44KJUiBOb3RlYm9va+OBqOOBl+OBpuS9v+OBiOOBsOOAgWNodW5r44GU44Go44GrUuOBqFB5dGhvbuOCkuWIh+OCiuabv+OBiOOCi+OBk+OBqOOBjOOBp+OBjeOBpuWkp+WkieS+v+WIqeOBp+OBmeOAggrjgarjgYpNYWPjg6bjg7zjgrbjg7zjgadQeXRob27nkrDlooPjgajjgZfjgaZBbmFjb25kYeOCkuOCpOODs+OCueODiOODvOODq+OBl+OBpuOBhOOCi+WgtOWQiOOAgS5ScHJvZmlsZeOBq+S7peS4i+OCkuiomOi8ieOBl+OBpuOBiuOBj+OBk+OBqOOBp0FuYWNvbmRh6YWN5LiL44GuUHl0aG9u44KS5ZG844Gz5Ye644GZ44GT44Go44GM44Gn44GN44G+44GZ44CCCgpgYGAKU3lzLnNldGVudihQQVRIID0gcGFzdGUoIi9hbmFjb25kYTMvYmluIiwgU3lzLmdldGVudigiUEFUSCIpLCBzZXA9IjoiKSkKYGBgCgrjgafjga/ml6npgJ9gcmV0aWN1bGF0ZWDjgpLjgqTjg7Pjgrnjg4jjg7zjg6vjgZfjgIFQeXRob27jgpLlkbzjgbPlh7rjgZvjgovjgYvoqabjgZfjgabjgb/jgb7jgZfjgofjgYbjgIIKCmBgYHtyfQojIGluc3RhbGwucGFja2FnZXMoInJldGljdWxhdGUiKQpsaWJyYXJ5KHJldGljdWxhdGUpCnN5c3RlbSgicHl0aG9uIC0tdmVyc2lvbiIpCmBgYAoK44GT44Gu44KI44GG44Gq6KGo56S644GM5Ye644KM44Gw5oiQ5Yqf44Gn44GZ44CCCgoKIyMjIFIgZ2xtIHZzIFB5dGhvbiBzdGF0c21vZGVscwrjgb7jgZrjga/jgZjjgoHjgavjgIFpcmlz44Gu44OH44O844K/44KS55So44GE44Gm57ea5b2i5Zue5biw44KS44GL44GR44Gm44G/44G+44GZ44CCUuOBp+OBr+S7peS4i+OBruOCiOOBhuOBq+abuOOBj+OBk+OBqOOBjOOBp+OBjeOBvuOBmeOAggoKYGBge3J9CmdsbShTZXBhbC5MZW5ndGggfiBQZXRhbC5MZW5ndGgsIGRhdGEgPSBpcmlzLCBmYW1pbHkgPSBnYXVzc2lhbikKYGBgCgoK5LiK6KiY44KSUHl0aG9u44GuYHN0YXRzbW9kZWxzYOOCkuS9v+OBo+OBpuWQjOOBmOOCiOOBhuOBq+abuOOBhOOBpuOBv+OBvuOBl+OCh+OBhuOAgmlyaXPjga7jg4fjg7zjgr/jga/kuovliY3jgatS44GL44KJ5pu444GN5Ye644GX44Gm44GK44GE44Gf44KC44Gu44KS5L2/55So44GZ44KL44GT44Go44Go44GX44CBYHBhbmRhc2Djga4qcmVhZF9jc3Yq44Gn6Kqt44G/6L6844G/44G+44GZ44CC44Gd44Gu44OH44O844K/44KSYHN0YXRzbW9kZWxzYOOBripHTE0q44Gr5rih44GX44G+44GZ44CCCgoKYGBge3B5dGhvbn0KaW1wb3J0IHN0YXRzbW9kZWxzLmFwaSBhcyBzbQppbXBvcnQgcGFuZGFzIGFzIHBkCgppcmlzID0gcGQucmVhZF9jc3YoIi9Vc2Vycy95bjI1MDAwNi9EZXNrdG9wL09uZURyaXZlIC0gVGVyYWRhdGEvUHJvamVjdC8wMV9GaW5hbmNlLzA0X01penVoby9Xb3JrLzIwMTgwNTE2X0hvd190b19SL2lyaXMuY3N2IikKCnJlc19pcmlzID0gc20uR0xNKGlyaXNbJ1NlcGFsLkxlbmd0aCddLCBpcmlzWydQZXRhbC5MZW5ndGgnXSwgCmZhbWlseSA9IHNtLmZhbWlsaWVzLkdhdXNzaWFuKCkpLmZpdCgpCnByaW50KHJlc19pcmlzLnN1bW1hcnkoKSkKYGBgCgrjgbLjgajjgb7jgZrliIbmnpDjgpLlrp/ooYzjgZnjgovjgZPjgajjga/jgafjgY3jgZ/jgojjgYbjgafjgZnjgYzjgIFS44Gu57WQ5p6c44Go44Gv6YGV44GE44G+44GZ44Gt44CC5Ye65Yqb44GV44KM44Gf44OG44O844OW44Or44Gu5LiL6YOo44Gr44GC44KL44CMY29lZuOAjeOCkuimi+OBpuOBv+OCi+OBqOOAgeWIh+eJh+OBjOWHuuWKm+OBleOCjOOBpuOBhOOBvuOBm+OCk+OAgmBzdGF0c21vZGVsc2Djga/jg4fjg5Xjgqnjg6vjg4jjgafjga/liIfniYfjgYzlhaXjgonjgarjgYTjgojjgYbjgafjgZnjgIIKCmBzdGF0c21vZGVsc2DjgafliIfniYfjgpLov73liqDjgZnjgovjgavjga9hZGRfY29uc3RhbnTjgpLkvb/jgYTjgb7jgZnjgILku6XkuIvjga7jgojjgYbjgavkv67mraPjgZfjgb7jgZfjgofjgYbjgIIKCmBgYHtweXRob259CmltcG9ydCBzdGF0c21vZGVscy5hcGkgYXMgc20KaW1wb3J0IHBhbmRhcyBhcyBwZAoKaXJpcyA9IHBkLnJlYWRfY3N2KCIvVXNlcnMveW4yNTAwMDYvRGVza3RvcC9PbmVEcml2ZSAtIFRlcmFkYXRhL1Byb2plY3QvMDFfRmluYW5jZS8wNF9NaXp1aG8vV29yay8yMDE4MDUxNl9Ib3dfdG9fUi9pcmlzLmNzdiIpCgpyZXNfaXJpc18yID0gc20uR0xNKGlyaXNbJ1NlcGFsLkxlbmd0aCddLCBzbS5hZGRfY29uc3RhbnQoaXJpc1snUGV0YWwuTGVuZ3RoJ10pLCAKZmFtaWx5ID0gc20uZmFtaWxpZXMuR2F1c3NpYW4oKSkuZml0KCkKcHJpbnQocmVzX2lyaXNfMi5zdW1tYXJ5KCkpCmBgYAoK54Sh5LqL44CBUuOBrue1kOaenOOBqOS4gOiHtOOBl+OBvuOBl+OBn+OAggoKCiMjIyMgUiBnbG0gdnMgUHl0aG9uIHN0YXRzbW9kZWxzKOWGjSkK57aa44GE44GmVGl0YW5pY+OBruODh+ODvOOCv+OCkueUqOOBhOOBpuODreOCuOOCueODhuOCo+ODg+OCr+WbnuW4sOOCkuOBi+OBkeOBpuOBv+OBvuOBmeOAglRpdGFuaWPjga7jg4fjg7zjgr/jga8KCmBgYHtyfQp0bXAgPC0gZGF0YS5mcmFtZShUaXRhbmljKQp0aXRhbmljIDwtIGRhdGEuZnJhbWUoQ2xhc3MgPSByZXAodG1wJENsYXNzLCB0bXAkRnJlcSksIAogICAgICAgICAgICAgICAgICAgICAgU2V4ICAgPSByZXAodG1wJFNleCwgdG1wJEZyZXEpLCAKICAgICAgICAgICAgICAgICAgICAgIEFnZSAgID0gcmVwKHRtcCRBZ2UsIHRtcCRGcmVxKSwgCiAgICAgICAgICAgICAgICAgICAgICBTdXJ2aXZlZCA9IHJlcCh0bXAkU3Vydml2ZWQsIHRtcCRGcmVxKSkKc3VtbWFyeShnbG0oU3Vydml2ZWQgfiAuLCBkYXRhID0gdGl0YW5pYywgZmFtaWx5ID0gYmlub21pYWwobGluayA9ICJsb2dpdCIpKSkKYGBgCgoKUuOBrmZvcm11bGHjgajlkIzjgZjjgojjgYbjgavmjIflrprjgZnjgovjgZ/jgoHjgatzdGF0c21vZGVscy5mb3JtdWxhLmFwaeOCkuS9v+eUqOOBmeOCi+OAggoKYGBge3B5dGhvbn0KaW1wb3J0IHN0YXRzbW9kZWxzLmFwaSBhcyBzbQppbXBvcnQgc3RhdHNtb2RlbHMuZm9ybXVsYS5hcGkgYXMgc21mCmltcG9ydCBwYW5kYXMgYXMgcGQKaW1wb3J0IG51bXB5IGFzIG5wCgpkYXQgPSBwZC5yZWFkX2NzdigiL1VzZXJzL3luMjUwMDA2L0Rlc2t0b3AvT25lRHJpdmUgLSBUZXJhZGF0YS9Qcm9qZWN0LzAxX0ZpbmFuY2UvMDRfTWl6dWhvL1dvcmsvMjAxODA1MTZfSG93X3RvX1IvdGl0YW5pYy5jc3YiKQpkYXQgPSBkYXQuZHJvcCgnVW5uYW1lZDogMCcsIGF4aXMgPSAxKQp0aXRhbmljX2Zvcm11bGEgPSAiU3Vydml2ZWQgfiBDbGFzcyArIFNleCArIEFnZSIKZ2xtX2JpbiA9IHNtZi5nbG0oZm9ybXVsYSA9IHRpdGFuaWNfZm9ybXVsYSwgCiAgICAgICAgICAgICAgICAgICBkYXRhID0gZGF0LCAKICAgICAgICAgICAgICAgICAgIGZhbWlseSA9IHNtLmZhbWlsaWVzLkJpbm9taWFsKHNtLmZhbWlsaWVzLmxpbmtzLmxvZ2l0KSkuZml0KCkKcHJpbnQoZ2xtX2Jpbi5zdW1tYXJ5KCkpCmBgYAoKCgrntZDmnpzjgYznlbDjgarjgovjgILjgqvjg4bjgrTjg6rjgqvjg6vlpInmlbDjgavjgaTjgYTjgabjgIFS44Gn44GvRmVtYWxl44GoQWR1bHTjgYzmjqjlrprjgZXjgozjgabjgYTjgovjga7jgavlr77jgZfjgaZQeXRob27jgafjga9NYWxl44GoQ2hpbGTjgYzmjqjlrprjgZXjgozjgabjgYTjgovjgILjgZPjgozjga/jgIEqKuWPgueFp+WIlyoqKFJlZmVyZW5jZSnjgYznlbDjgarjgovjgZ/jgoHjgafjgYLjgovjgIIKCgpgYGB7cn0KdGl0YW5pYyRTZXggPC0gcmVsZXZlbCh0aXRhbmljJFNleCwgcmVmID0gIkZlbWFsZSIpCnRpdGFuaWMkQWdlIDwtIHJlbGV2ZWwodGl0YW5pYyRBZ2UsIHJlZiA9ICJBZHVsdCIpCnN1bW1hcnkoZ2xtKFN1cnZpdmVkIH4gLiwgZGF0YSA9IHRpdGFuaWMsIGZhbWlseSA9IGJpbm9taWFsKGxpbmsgPSAibG9naXQiKSkpCmBgYAoKCuWbnuW4sOS/guaVsOOBrue1tuWvvuWApOOBr+WQjOOBmOOBqOOBquOBo+OBn+OBjOOAgeespuWPt+OBjOeVsOOBquOCi+OAguebrueahOWkieaVsOOBp+OBguOCi2BZZXNg44GoYE5vYOOBqOOBhOOBhuaWh+Wtl+WIl+OBjFLjgahQeXRob27jgafliKXjgIXjgavop6Pph4jjgZXjgozjgZ/lj6/og73mgKfjgYzjgYLjgovjgIIKCgpgYGB7cHl0aG9ufQppbXBvcnQgc3RhdHNtb2RlbHMuYXBpIGFzIHNtCmltcG9ydCBzdGF0c21vZGVscy5mb3JtdWxhLmFwaSBhcyBzbWYKaW1wb3J0IHBhbmRhcyBhcyBwZAppbXBvcnQgbnVtcHkgYXMgbnAKCmRhdCA9IHBkLnJlYWRfY3N2KCIvVXNlcnMveW4yNTAwMDYvRGVza3RvcC9PbmVEcml2ZSAtIFRlcmFkYXRhL1Byb2plY3QvMDFfRmluYW5jZS8wNF9NaXp1aG8vV29yay8yMDE4MDUxNl9Ib3dfdG9fUi90aXRhbmljLmNzdiIpCmRhdCA9IGRhdC5kcm9wKCdVbm5hbWVkOiAwJywgYXhpcyA9IDEpCgpkYXRbJ1N1cnZpdmVkJ10gPSBkYXRbJ1N1cnZpdmVkJ10uc3RyLnJlcGxhY2UoJ05vJywgJzAnKQpkYXRbJ1N1cnZpdmVkJ10gPSBkYXRbJ1N1cnZpdmVkJ10uc3RyLnJlcGxhY2UoJ1llcycsICcxJykKZGF0WydTdXJ2aXZlZCddID0gZGF0WydTdXJ2aXZlZCddLmFzdHlwZShucC5pbnQ2NCkKCnRpdGFuaWNfZm9ybXVsYSA9ICJTdXJ2aXZlZCB+IENsYXNzICsgU2V4ICsgQWdlIgpnbG1fYmluXzIgPSBzbWYuZ2xtKGZvcm11bGEgPSB0aXRhbmljX2Zvcm11bGEsIGRhdGEgPSBkYXQsIGZhbWlseT1zbS5mYW1pbGllcy5CaW5vbWlhbChzbS5mYW1pbGllcy5saW5rcy5sb2dpdCkpLmZpdCgpCnByaW50KGdsbV9iaW5fMi5zdW1tYXJ5KCkpCmBgYAoKCuOBk+OCjOOBp+S4gOiHtOOAggo=</div>
 
 
 
