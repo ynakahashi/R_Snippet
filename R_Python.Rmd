@@ -1,0 +1,119 @@
+---
+title: "RとPythonの結果を一致させたい"
+output: html_notebook
+---
+
+## 背景
+通常、私はデータを分析する際には主にRを使用します。しかし分析結果を既存のシステムに投入するなど実装を考えた場合には、Rではなく別の言語を求められることもあると思います。
+今回、RとPythonのそれぞれでGLMを実行したときに結果が一致するのかを検証する機会があったため、その内容を備忘がてら紹介しておきます。
+
+## 0. RからPythonを呼び出す準備
+
+RからPythonを呼び出すためのライブラリ`reticulate`を使用する。MacユーザーでPython環境としてanacondaをインストールしている場合はpythonを呼び出す際に注意が必要。
+.Rprofileに以下を記載。
+Sys.setenv(PATH = paste("/anaconda3/bin", Sys.getenv("PATH"), sep=":"))
+
+```{r}
+# install.packages("reticulate")
+library(reticulate)
+system("python --version")
+```
+
+
+## 1. R glm vs Python statsmodels
+irisのデータを用いて線形回帰をかける
+
+```{r}
+glm(Sepal.Length ~ Petal.Length, data = iris, family = gaussian)
+```
+
+Pythonのstatsmodelsを使って同じように書くと、結果が異なる
+
+```{python}
+import statsmodels.api as sm
+import pandas as pd
+
+iris = pd.read_csv("/Users/yn250006/Desktop/OneDrive - Teradata/Project/01_Finance/04_Mizuho/Work/20180516_How_to_R/iris.csv")
+
+res_iris = sm.GLM(iris['Sepal.Length'], iris['Petal.Length'], family=sm.families.Gaussian()).fit()
+print(res_iris.summary())
+```
+
+statsmodelsではデフォルトで切片が入らないので、add_constanが必要
+
+```{python}
+import statsmodels.api as sm
+import pandas as pd
+
+iris = pd.read_csv("/Users/yn250006/Desktop/OneDrive - Teradata/Project/01_Finance/04_Mizuho/Work/20180516_How_to_R/iris.csv")
+
+res_iris_2 = sm.GLM(iris['Sepal.Length'], sm.add_constant(iris['Petal.Length']), family=sm.families.Gaussian()).fit()
+print(res_iris_2.summary())
+```
+
+
+## 2. R glm vs Python statsmodels(再)
+Titanicのデータを用いてロジスティック回帰をかける
+
+```{r}
+tmp <- data.frame(Titanic)
+titanic <- data.frame(Class = rep(tmp$Class, tmp$Freq), 
+                      Sex   = rep(tmp$Sex, tmp$Freq), 
+                      Age   = rep(tmp$Age, tmp$Freq), 
+                      Survived = rep(tmp$Survived, tmp$Freq))
+summary(glm(Survived ~ ., data = titanic, family = binomial(link = "logit")))
+```
+
+
+Rのformulaと同じように指定するためにstatsmodels.formula.apiを使用する。
+
+```{python}
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import pandas as pd
+import numpy as np
+
+dat = pd.read_csv("/Users/yn250006/Desktop/OneDrive - Teradata/Project/01_Finance/04_Mizuho/Work/20180516_How_to_R/titanic.csv")
+dat = dat.drop('Unnamed: 0', axis = 1)
+titanic_formula = "Survived ~ Class + Sex + Age"
+glm_bin = smf.glm(formula = titanic_formula, 
+                   data = dat, 
+                   family = sm.families.Binomial(sm.families.links.logit)).fit()
+print(glm_bin.summary())
+```
+
+
+
+結果が異なる。カテゴリカル変数について、RではFemaleとAdultが推定されているのに対してPythonではMaleとChildが推定されている。これは、**参照列**(Reference)が異なるためである。
+
+
+```{r}
+titanic$Sex <- relevel(titanic$Sex, ref = "Female")
+titanic$Age <- relevel(titanic$Age, ref = "Adult")
+summary(glm(Survived ~ ., data = titanic, family = binomial(link = "logit")))
+```
+
+
+回帰係数の絶対値は同じとなったが、符号が異なる。目的変数である`Yes`と`No`という文字列がRとPythonで別々に解釈された可能性がある。
+
+
+```{python}
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import pandas as pd
+import numpy as np
+
+dat = pd.read_csv("/Users/yn250006/Desktop/OneDrive - Teradata/Project/01_Finance/04_Mizuho/Work/20180516_How_to_R/titanic.csv")
+dat = dat.drop('Unnamed: 0', axis = 1)
+
+dat['Survived'] = dat['Survived'].str.replace('No', '0')
+dat['Survived'] = dat['Survived'].str.replace('Yes', '1')
+dat['Survived'] = dat['Survived'].astype(np.int64)
+
+titanic_formula = "Survived ~ Class + Sex + Age"
+glm_bin_2 = smf.glm(formula = titanic_formula, data = dat, family=sm.families.Binomial(sm.families.links.logit)).fit()
+print(glm_bin_2.summary())
+```
+
+
+これで一致。
