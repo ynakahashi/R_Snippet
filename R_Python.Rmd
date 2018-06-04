@@ -14,7 +14,7 @@ output: html_notebook
 今回の検証では、RからPythonを呼び出すためのライブラリ`reticulate`を使用しました。RStudioからR Notebookとして使えば、chunkごとにRとPythonを切り替えることができて大変便利です。
 なおMacユーザーでPython環境としてAnacondaをインストールしている場合、.Rprofileに以下を記載しておくことでAnaconda配下のPythonを呼び出すことができます。
 
-```
+```{}
 Sys.setenv(PATH = paste("/anaconda3/bin", Sys.getenv("PATH"), sep=":"))
 ```
 
@@ -29,7 +29,7 @@ system("python --version")
 このような表示が出れば成功です。
 
 
-### R glm vs Python statsmodels
+### 線形回帰
 まずはじめに、irisのデータを用いて線形回帰をかけてみます。Rでは以下のように書くことができます。
 
 ```{r}
@@ -69,8 +69,8 @@ print(res_iris_2.summary())
 無事、Rの結果と一致しました。
 
 
-#### R glm vs Python statsmodels(再)
-続いてTitanicのデータを用いてロジスティック回帰をかけてみます。Titanicのデータは
+#### ロジスティック回帰
+続いてTitanicのデータを用いてロジスティック回帰をかけてみます。Titanicのデータは下記のコードによりdataframeに加工し、iris同様に書き出しておきました。
 
 ```{r}
 tmp <- data.frame(Titanic)
@@ -78,11 +78,16 @@ titanic <- data.frame(Class = rep(tmp$Class, tmp$Freq),
                       Sex   = rep(tmp$Sex, tmp$Freq), 
                       Age   = rep(tmp$Age, tmp$Freq), 
                       Survived = rep(tmp$Survived, tmp$Freq))
-summary(glm(Survived ~ ., data = titanic, family = binomial(link = "logit")))
+```
+
+Rでは以下のように書けます。
+
+```{r}
+glm(Survived ~ ., data = titanic, family = binomial(link = "logit"))
 ```
 
 
-Rのformulaと同じように指定するためにstatsmodels.formula.apiを使用する。
+これをPythonで実行してみましょう。ここではRのformulaと同じように指定するためにstatsmodels.formula.apiを使用します。
 
 ```{python}
 import statsmodels.api as sm
@@ -101,17 +106,21 @@ print(glm_bin.summary())
 
 
 
-結果が異なる。カテゴリカル変数について、RではFemaleとAdultが推定されているのに対してPythonではMaleとChildが推定されている。これは、**参照列**(Reference)が異なるためである。
+やはり、結果が異なります。よく見ると、カテゴリカル変数についてRでは`Female`と`Adult`が推定されているのに対して、Pythonでは`Male`と`Child`が推定されていることがわかります。どうやら**参照列**(Reference)が異なるようです。
+
+Rの方で、Referenceを変更して確認してみましょう。
 
 
 ```{r}
 titanic$Sex <- relevel(titanic$Sex, ref = "Female")
 titanic$Age <- relevel(titanic$Age, ref = "Adult")
-summary(glm(Survived ~ ., data = titanic, family = binomial(link = "logit")))
+glm(Survived ~ ., data = titanic, family = binomial(link = "logit"))
 ```
 
 
-回帰係数の絶対値は同じとなったが、符号が異なる。目的変数である`Yes`と`No`という文字列がRとPythonで別々に解釈された可能性がある。
+これで結果が近くなりましたが、まだ一致していません。回帰係数の絶対値は同じとなりましたが符号が異なっています。目的変数である`Yes`と`No`という文字列が、RとPythonで別々に解釈された可能性があります。
+
+今度はPython側で`Yes`と`No`の定義を修正してみましょう。
 
 
 ```{python}
@@ -133,4 +142,11 @@ print(glm_bin_2.summary())
 ```
 
 
-これで一致。
+これで一致しました。
+
+
+#### 終わりに
+今回見てきたように、同一かつシンプルなモデルであっても、言語の仕様によって出力は容易に変わります。異なる結果が得られたときに大慌てしなくて済むよう、各言語や関数についての仕様を把握しておき、本当に異なる結果となっているのかをチェックするというのが大切です。特にモデルの結果を実システムに組み込む際にはエンジニアによるリファクタリングが行われることも多いでしょうから、エンジニアがハマりそうなポイントを押さえておくと役立ちそうですね。
+
+
+
