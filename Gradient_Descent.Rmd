@@ -1,0 +1,64 @@
+---
+title: "Gradient Descent"
+author: "ynakahashi"
+date: "2018/6/28"
+output: html_document
+---
+
+```{r}
+n  <- 100
+b0_t <- 0
+b1_t <- 1
+b2_t <- 2
+
+my_sim <- function(n, b0, b1, b2) {
+   
+   x1 <- rnorm(n, 0, 1)
+   x2 <- rnorm(n, 0, 1)
+   e  <- rnorm(n, 0, 1)
+   
+   y <- b0 + x1 * b1 + x2 * b2 + e
+
+   dat <- data.frame(
+      y = y,
+      x1 = x1,
+      x2 = x2
+   )
+   dat
+}
+
+dat <- my_sim(n, b0_t, b1_t, b2_t)
+lm(y ~ ., dat)$coef
+
+
+th <- 0.001
+eta <- 0.1
+
+pars_old <- c(1, 2, 3)
+pars_new <- c(0, 0, 0)
+i <- 1
+d <- 10
+while(d > th) {
+   
+   cat(sprintf("Round: %d \n", i))
+   y_hat <- as.matrix(cbind(1, dat[, -1])) %*% pars_old
+   pars_new[1] <- pars_old[1] - eta * mean((y_hat - dat$y) * 1)
+   pars_new[2] <- pars_old[2] - eta * mean((y_hat - dat$y) * dat$x1)
+   pars_new[3] <- pars_old[3] - eta * mean((y_hat - dat$y) * dat$x2)
+   
+   # cat(sprintf("Old Parameters: %s \n", paste0(sprintf("%.2f", pars_old), collapse = " ")))
+   cat(sprintf("Updated Parameters: %s \n", paste0(sprintf("%.2f", pars_new), collapse = " ")))
+   d <- sum(abs(pars_new[1] - pars_old[1]), 
+            abs(pars_new[2] - pars_old[2]), 
+            abs(pars_new[3] - pars_old[3]))
+
+   cat(sprintf("Difference: %.2f \n", d))
+   pars_old <- pars_new
+   i <- i + 1
+
+   cat(sprintf("--------- \n"))
+
+}
+
+```
+

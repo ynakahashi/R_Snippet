@@ -1,0 +1,68 @@
+---
+title: "Parallel Linear Regression"
+author: "ynakahashi"
+date: "2018/6/28"
+output: html_document
+---
+
+```{r}
+
+lm(dist ~ speed, data = cars)$coefficients
+y <- cars$dist
+X <- cbind(1, cars$speed)
+
+solve(crossprod(X, X)) %*% crossprod(X, y)
+solve(t(X) %*% X) %*% t(X) %*% y
+
+
+solve(qr.R(qr(as.matrix(X)))) %*% t(qr.Q(qr(as.matrix(X)))) %*% y
+solve(qr.R(qr(X))) %*% t(qr.Q(qr(X))) %*% y
+
+m <- 5
+
+Xlist <- list()
+for(j in 1:m) {
+   Xlist[[j]] = X[(j-1)*10 + 1:10, ]
+}
+
+ylist <- list()
+for(j in 1:m) {
+   ylist[[j]] = y[(j-1)*10 + 1:10]
+}
+
+QR1 <- list()
+for(j in 1:m) {
+   QR1[[j]] <- list(Q = qr.Q(qr(Xlist[[j]])),
+                    R = qr.R(qr(Xlist[[j]])))
+}
+
+
+R1 <- QR1[[1]]$R
+for(j in 2:m) {
+   R1 <- rbind(R1, QR1[[j]]$R)
+}
+
+Q1 <- qr.Q(qr(R1))
+R2 <- qr.R(qr(R1))
+Q2list <- list()
+for(j in 1:m) {
+   Q2list[[j]] <- Q1[(j-1)*2 + 1:2, ]
+}
+
+Q3list <- list()
+for(j in 1:m) {
+   Q3list[[j]] <- QR1[[j]]$Q %*% Q2list[[j]]
+}
+
+Vlist <- list()
+for(j in 1:m) {
+   Vlist[[j]] <- t(Q3list[[j]]) %*% ylist[[j]]
+}
+
+sumV <- Vlist[[1]]
+for(j in 2:m) {
+   sumV <- sumV + Vlist[[j]]
+}
+solve(R2) %*% sumV
+```
+

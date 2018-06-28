@@ -1,0 +1,98 @@
+---
+title: "Logistic Regression"
+author: "ynakahashi"
+date: "2018/6/28"
+output: html_document
+---
+
+```{r}
+n <- 10000
+b0 <- 0.0
+b1 <- 0.5
+b2 <- 1.0
+th <- 0.5
+
+my_sim <- function(n, b0, b1, b2, th) {
+   
+   x1 <- rnorm(n, 0, 1)
+   x2 <- rnorm(n, 0, 1)
+   e  <- rlogis(n)
+   
+   l <- b0 + x1 * b1 + x2 * b2 + e
+   p <- exp(l) / (1 + exp(l))
+   
+   dat <- data.frame(
+      y = ifelse(p > th, 1, 0),
+      x1 = x1,
+      x2 = x2
+   )
+   
+   glm(y ~ ., data = dat, family = binomial("logit"))
+}
+
+
+N <- 100
+p <- 3
+res_mat <- matrix(0, N, p)
+
+for (i in 1:N) {
+   res_mat[i, ] <- coef(my_sim(n, b0, b1, b2, th))
+}
+
+summary(res_mat)
+MASS::truehist(res_mat[, 1])
+MASS::truehist(res_mat[, 2])
+MASS::truehist(res_mat[, 3])
+
+
+# ---- 
+
+LL <- function(pars, dat){
+   b0 <- pars[1]
+   b1 <- pars[2]
+   b2 <- pars[3]
+   l <-  b0 + dat$x1 * b1 + dat$x2 * b2
+   # sum(dlogis(l, log = TRUE))
+   p <- exp(l) / (1 + exp(l))
+   # sum(dat$y * log(p) + log(p))
+   # sum(dat$y * log(p) - log(1-p) + log(1-p) + log(p))
+   mean(dat$y * log(p) + (1-dat$y) * log(1-p))
+}
+
+
+pars <- c(1, 2, 3)
+LL(pars, dat)
+
+opt1 <- optim(par = c(0, 0.5, 1), LL, control = list(fnscale = -1), dat = dat)
+opt1
+
+opt2 <- optim(opt1$par, LL, control = list(fnscale=-1),
+              method = "BFGS", hessian = TRUE, dat = dat)
+opt2
+
+
+sigmoid <- function(z) {
+   g <- 1 / (1 + exp(-z))
+   return(g)
+}
+
+
+LL <- function(pars) {
+   N <- nrow(dat)
+   g <- sigmoid(as.matrix(cbind(1, dat[, -1])) %*% as.matrix(pars))
+   J <- (1/N) * sum((-dat$y * log(g)) - ((1 - dat$y) * log(1-g)))
+   return(J)
+}
+
+cost <- function(theta) {
+   m <- nrow(dat)
+   g <- sigmoid(as.matrix(cbind(1, dat[, -1])) %*% as.matrix(theta))
+   J <- (1/m) * sum((-dat$y * log(g)) - ((1 - dat$y) * log(1-g)))
+   return(J)
+}
+
+opt1 <- optim(par = pars, cost)
+opt1
+
+```
+
