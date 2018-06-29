@@ -1,0 +1,80 @@
+---
+title: "Error Distribution & Link Function"
+author: "Ynakahashi"
+date: "2018/6/29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+n <- 10000 # データサイズ
+b0 <- 0.0  # 切片 
+b1 <- 0.5  # 説明変数x1の回帰係数
+b2 <- 1.0  # 説明変数x2の回帰係数
+
+x1 <- rnorm(n, 0, 1)
+x2 <- rnorm(n, 0, 1)
+
+## --- binomial
+l1 <- b0 + x1 * b1 + x2 * b2
+p1 <- exp(l1) / (1 + exp(l1))
+
+dat_01 <- data.frame(
+   y = rbinom(n, 1, p1),
+   x1 = x1,
+   x2 = x2
+)
+
+## --- rlogis
+th <- 0.5  # 目的変数を1/0に丸める閾値
+e  <- rlogis(n) # 誤差分布
+
+l2 <- l1 + e
+p2 <- exp(l2) / (1 + exp(l2))
+
+dat_02 <- data.frame(
+   y = ifelse(p2 > th, 1, 0),
+   x1 = x1,
+   x2 = x2
+)
+
+
+glm(y ~ ., dat_01, family = binomial("logit"))$coef
+glm(y ~ ., dat_02, family = binomial("logit"))$coef
+
+
+
+simulate_prob <- function(n, b0, b1, b2, th) {
+   
+   x1 <- rnorm(n, 0, 1)
+   x2 <- rnorm(n, 0, 1)
+   e  <- rnorm(n, 0, 1) # ここだけ変更する
+   
+   l <- b0 + x1 * b1 + x2 * b2 + e
+   p <- exp(l) / (1 + exp(l))
+   
+   dat <- data.frame(
+      y = ifelse(p > th, 1, 0),
+      x1 = x1,
+      x2 = x2
+   )
+   
+   glm(y ~ ., data = dat, family = binomial("probit"))
+}
+
+
+set.seed(123)
+res_mat_prob <- matrix(0, N, eff) # 結果の格納用
+for (i in 1:N) {
+   res_mat_prob[i, ] <- simulate_prob(n, b0, b1, b2, th)$coef
+}
+
+summary(res_mat_prob)
+
+
+
+```
+

@@ -5,14 +5,29 @@ date: "2018/6/28"
 output: html_document
 ---
 
-```{r}
-n <- 10000
-b0 <- 0.0
-b1 <- 0.5
-b2 <- 1.0
-th <- 0.5
+[:contents]
 
-my_sim <- function(n, b0, b1, b2, th) {
+
+### 背景
+ふと「ロジスティック回帰ってよく使う割には理解できていないなー」と思ったので、いくつか実験したことを書いておきます。
+
+
+### １．ロジスティック回帰の誤差分布はロジスティック分布
+例えば[このページ](https://stats.stackexchange.com/questions/124818/logistic-regression-error-term-and-its-distribution)
+を見ても「GLMにおいて誤差分布を気にしても仕方ない」といった書かれ方をしますが、そうは言っても一般化線形モデルでは期待値を線形予測子で表すことができ、期待値からの誤差が何らかの分布に従うことを仮定しているわけです。
+
+
+```{r}
+n <- 10000 # データサイズ
+b0 <- 0.0  # 切片 
+b1 <- 0.5  # 説明変数x1の回帰係数
+b2 <- 1.0  # 説明変数x2の回帰係数
+th <- 0.5  # 目的変数を1/0に丸める閾値
+```
+
+この条件のもとで以下のようにサンプルデータを発生させ、`glm`でパラメータを推定できるか確認しましょう。ポイントは誤差分散を`rlogis`で生成しているところです。
+```{r}
+simulate_logi <- function(n, b0, b1, b2, th) {
    
    x1 <- rnorm(n, 0, 1)
    x2 <- rnorm(n, 0, 1)
@@ -29,70 +44,100 @@ my_sim <- function(n, b0, b1, b2, th) {
    
    glm(y ~ ., data = dat, family = binomial("logit"))
 }
-
-
-N <- 100
-p <- 3
-res_mat <- matrix(0, N, p)
-
-for (i in 1:N) {
-   res_mat[i, ] <- coef(my_sim(n, b0, b1, b2, th))
-}
-
-summary(res_mat)
-MASS::truehist(res_mat[, 1])
-MASS::truehist(res_mat[, 2])
-MASS::truehist(res_mat[, 3])
-
-
-# ---- 
-
-LL <- function(pars, dat){
-   b0 <- pars[1]
-   b1 <- pars[2]
-   b2 <- pars[3]
-   l <-  b0 + dat$x1 * b1 + dat$x2 * b2
-   # sum(dlogis(l, log = TRUE))
-   p <- exp(l) / (1 + exp(l))
-   # sum(dat$y * log(p) + log(p))
-   # sum(dat$y * log(p) - log(1-p) + log(1-p) + log(p))
-   mean(dat$y * log(p) + (1-dat$y) * log(1-p))
-}
-
-
-pars <- c(1, 2, 3)
-LL(pars, dat)
-
-opt1 <- optim(par = c(0, 0.5, 1), LL, control = list(fnscale = -1), dat = dat)
-opt1
-
-opt2 <- optim(opt1$par, LL, control = list(fnscale=-1),
-              method = "BFGS", hessian = TRUE, dat = dat)
-opt2
-
-
-sigmoid <- function(z) {
-   g <- 1 / (1 + exp(-z))
-   return(g)
-}
-
-
-LL <- function(pars) {
-   N <- nrow(dat)
-   g <- sigmoid(as.matrix(cbind(1, dat[, -1])) %*% as.matrix(pars))
-   J <- (1/N) * sum((-dat$y * log(g)) - ((1 - dat$y) * log(1-g)))
-   return(J)
-}
-
-cost <- function(theta) {
-   m <- nrow(dat)
-   g <- sigmoid(as.matrix(cbind(1, dat[, -1])) %*% as.matrix(theta))
-   J <- (1/m) * sum((-dat$y * log(g)) - ((1 - dat$y) * log(1-g)))
-   return(J)
-}
-
-opt1 <- optim(par = pars, cost)
-opt1
-
 ```
+
+これでちゃんと推定できているか、一度確認してみましょう。
+```{r}
+simulate_logi(n, b0, b1, b2, th)$coef
+```
+
+`b0 = 0`, `b1 = 0.5`, `b2 = 1.0`だったのでちゃんと推定できているようですね。
+ではこの条件のまま、サンプルデータの生成＆`glm`による推定を100回ほど繰り返し、推定値がどのように分布するかを確認してみます。
+```{r}
+set.seed(123)
+N   <- 100 # シミュレーションの回数
+eff <- 3   # 推定値の数
+res_mat_logi <- matrix(0, N, eff) # 結果の格納用
+for (i in 1:N) {
+   res_mat_logi[i, ] <- simulate_logi(n, b0, b1, b2, th)$coef
+}
+```
+
+まずは`summary`です。
+```{r}
+summary(res_mat_logi)
+```
+
+ちゃんと狙った通りの値が推定できているようですね。ヒストグラムも見てみましょう。
+```{r}
+MASS::truehist(res_mat_logi[, 1])
+MASS::truehist(res_mat_logi[, 2])
+MASS::truehist(res_mat_logi[, 3])
+```
+
+
+### シミュレーション②
+それでは続いてロジットに対する線形回帰の結果を同様に見てみます。先ほどと同様にサンプルデータの生成＆`glm`による推定を100回行いますが、今度は誤差分布として`rlogis`ではなく`rnorm`を使います。
+
+```{r}
+simulate_norm <- function(n, b0, b1, b2, th) {
+   
+   x1 <- rnorm(n, 0, 1)
+   x2 <- rnorm(n, 0, 1)
+   e  <- rnorm(n, 0, 1) # ここだけ変更する
+   
+   l <- b0 + x1 * b1 + x2 * b2 + e
+   p <- exp(l) / (1 + exp(l))
+   
+   dat <- data.frame(
+      y = ifelse(p > th, 1, 0),
+      x1 = x1,
+      x2 = x2
+   )
+   
+   glm(y ~ ., data = dat, family = binomial("logit"))
+}
+```
+
+先ほどと同様にシミュレーションを100回実施します。
+```{r}
+set.seed(123)
+res_mat_norm <- matrix(0, N, eff) # 結果の格納用
+for (i in 1:N) {
+   res_mat_norm[i, ] <- simulate_norm(n, b0, b1, b2, th)$coef
+}
+```
+
+
+お、どうやらかなり様子が異なりますね。切片は問題なさそうですが、説明変数の回帰係数が高く推定されているようです。
+```{r}
+summary(res_mat_norm)
+```
+
+
+`x1`、`x2`ともに1.7倍程度高く推定される傾向があるようなのですが、これがなぜ1.7倍なのかわかりません。。。
+```{r}
+mean(res_mat_norm[, 2] / res_mat_logi[, 2])
+mean(res_mat_norm[, 3] / res_mat_logi[, 3])
+```
+
+`rlogis`の標準偏差は`rnorm`の1.8倍程度になりますが、これが原因？
+```{r}
+sd(rlogis(10000)) / var(rnorm(10000))
+```
+
+ヒストグラムを比較すると、バラつきの大きさが異なることがよくわかります。
+```{r}
+color <- c("#ff00ff40", "#0000ff40")
+hist(rlogis(10000), xlim = c(-10, 10), ylim = c(0, 0.4), col = color[1], probability = T,
+     xlab = "", main = "rlogis vs rnorm")
+hist(rnorm(10000), xlim = c(-10, 10), ylim = c(0, 0.4), col = color[2], probability = T, add = T)
+labels <- c("rlogis", "rnorm")
+legend("topright", legend = labels, col = color, pch = 15, cex = 1)
+```
+
+
+### 終わりに
+というわけでロジスティック回帰が適切である場面において、ロジットに対する線形回帰を当てはめると回帰係数を
+
 
