@@ -1,0 +1,111 @@
+---
+title: "glm dive"
+author: "Ynakahashi"
+date: "2018/7/3"
+output: html_document
+---
+
+
+`glm`は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/glm.R)で定義されている。内容は以下のよう。
+
+
+```{r}
+glm <- function(formula, family = gaussian, data, weights,
+                subset, na.action, start = NULL, etastart, mustart, offset,
+                control = list(...),
+                model = TRUE, method = "glm.fit",
+                x = FALSE, y = TRUE,
+                contrasts = NULL, ...) {
+
+   ##
+   ## 中略
+   ##
+
+   ## 本体はココ(L92)
+   fit <- eval(call(if(is.function(method)) "method" else method,
+                  x = X, y = Y, weights = weights, start = start,
+                  etastart = etastart, mustart = mustart,
+                  offset = offset, family = family, control = control,
+                  intercept = attr(mt, "intercept") > 0L))
+   
+   ## Null model
+   if(length(offset) && attr(mt, "intercept") > 0L) {
+     fit2 <-
+         eval(call(if(is.function(method)) "method" else method,
+                   x = X[, "(Intercept)", drop=FALSE], y = Y,
+                   weights = weights, offset = offset, family = family,
+                   control = control, intercept = TRUE))
+     ## That fit might not have converged ....
+     if(!fit2$converged)
+         warning("fitting to calculate the null deviance did not converge -- increase 'maxit'?")
+     fit$null.deviance <- fit2$deviance
+   }
+   
+   ##
+   ## 中略
+   ##
+   
+   ## return
+   fit
+}
+```
+
+`glm`の中では通常は`glm.fit`が呼ばれる。`glm.fit`に渡す`family`に応じた関数は[ここ](https://github.com/SurajGupta/r-source/blob/a28e609e72ed7c47f6ddfbb86c85279a0750f0b7/src/library/stats/R/family.R)で定義されていて、特にCで定義されたもの（binomial、logit関係）は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/family.c)にある。
+
+
+`glm`の本体となる`glm.fit`は以下のよう。反復のためのアルゴリズムとしてはIRLSだが、その中では`.Call(C_Cdqrls)`が呼ばれている。[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/lm.c)で定義されていて、中ではさらにfortranで書かれた関数([ここ](https://github.com/SurajGupta/r-source/blob/master/src/appl/dqrls.f)で定義されている)を呼び出している。
+内容を見ると、最小二乗法をQR分解で解いている（Householder法の様子）。
+
+結局、`family`や`weights`などに合わせて`x`や`y`などを変換し、QR分解による最小二乗法を反復しながら適用しているというのが`glm`の中身。
+
+```{r}
+glm.fit <- function (x, y, weights = rep(1, nobs), start = NULL,
+                     etastart = NULL, mustart = NULL, offset = rep(0, nobs),
+                     family = gaussian(), control = list(), intercept = TRUE) {
+   
+   ##
+   ## 中略
+   ##
+
+   ## ここで指定したfamilyに応じた関数を取ってくる
+   variance <- family$variance
+   linkinv  <- family$linkinv
+   if (!is.function(variance) || !is.function(linkinv) )
+	stop("'family' argument seems not to be a valid family object", call. = FALSE)
+   dev.resids <- family$dev.resids
+   aic <- family$aic
+   mu.eta <- family$mu.eta
+   unless.null <- function(x, if.null) if(is.null(x)) if.null else x
+   valideta <- unless.null(family$valideta, function(eta) TRUE)
+   validmu  <- unless.null(family$validmu,  function(mu) TRUE)
+    
+   ##
+   ## 中略
+   ##
+    
+   ## メインとなるアルゴリズム（IRLS）はここから開始
+   for (iter in 1L:control$maxit) {
+      
+      ##
+      ## 中略
+      ##
+      
+      ## 特に本体はここ
+      fit <- .Call(C_Cdqrls, x[good, , drop = FALSE] * w, z * w,
+                   min(1e-7, control$epsilon/1000), check=FALSE)
+      
+   }
+   ##
+   ## 中略
+   ##
+
+   ## return
+}
+```
+
+
+
+
+
+
+
