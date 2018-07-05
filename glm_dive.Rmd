@@ -5,6 +5,9 @@ date: "2018/7/3"
 output: html_document
 ---
 
+[:contens]
+
+## 背景
 
 `glm`は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/glm.R)で定義されている。内容は以下のよう。
 
@@ -63,9 +66,7 @@ glm.fit <- function (x, y, weights = rep(1, nobs), start = NULL,
                      etastart = NULL, mustart = NULL, offset = rep(0, nobs),
                      family = gaussian(), control = list(), intercept = TRUE) {
    
-   ##
    ## 中略
-   ##
 
    ## ここで指定したfamilyに応じた関数を取ってくる
    variance <- family$variance
@@ -79,25 +80,20 @@ glm.fit <- function (x, y, weights = rep(1, nobs), start = NULL,
    valideta <- unless.null(family$valideta, function(eta) TRUE)
    validmu  <- unless.null(family$validmu,  function(mu) TRUE)
     
-   ##
    ## 中略
-   ##
-    
+
    ## メインとなるアルゴリズム（IRLS）はここから開始
    for (iter in 1L:control$maxit) {
       
-      ##
       ## 中略
-      ##
-      
+
       ## 特に本体はここ
       fit <- .Call(C_Cdqrls, x[good, , drop = FALSE] * w, z * w,
                    min(1e-7, control$epsilon/1000), check=FALSE)
       
    }
-   ##
+
    ## 中略
-   ##
 
    ## return
 }

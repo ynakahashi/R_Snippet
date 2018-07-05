@@ -5,11 +5,7 @@ date: "2018/6/29"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-
+## 小ネタ①：ロジスティック回帰は集計値を用いても同じ結果となる
 
 ```{r}
 tmp <- epitools::expand.table(Titanic)
@@ -20,12 +16,14 @@ dat_table <-
    summarise("Yes" = sum(Survived == "Yes"),
              "No" = sum(Survived == "No"))
 
-glm(cbind(Yes, No) ~ ., dat_table, family = binomial("logit"))
-glm(Survived ~ ., tmp, family = binomial("logit"))
+summary(glm(cbind(Yes, No) ~ ., dat_table, family = binomial("logit")))$coef
+summary(glm(Survived ~ ., tmp, family = binomial("logit")))$coef
+```
 
+## 小ネタ②：ロジスティック回帰とロジットに対する線形回帰は異なる
 
-
-
+```{r}
+set.seed(123)
 n <- 10000
 x1 <- sample(c("A", "B"), n, replace = T)
 x1_A <- ifelse(x1 == "A", 1, 0)
@@ -36,9 +34,7 @@ x2_Y <- ifelse(x2 == "Y", 1, 0)
 x2_Z <- ifelse(x2 == "Z", 1, 0)
 
 b0 <- 0
-# b1_A <- 0.5
 b1_B <- 1.0
-# b2_X <- 0.1
 b2_Y <- 1.5
 b2_Z <- 3.0
 
@@ -57,12 +53,16 @@ tmp <- dat %>%
    mutate(p = Yes / (Yes + No)) %>% 
    mutate(logit = log(p / (1-p)))
 
-
-
-
-glm(y ~ x1 + x2, dat, family = binomial("logit"))$coef
-glm(cbind(Yes, No) ~ x1 + x2, tmp, family = binomial("logit"))$coef
-lm(logit ~ x1 + x2, tmp)$coef
-
+summary(glm(y ~ x1 + x2, dat, family = binomial("logit")))$coef
+summary(lm(logit ~ x1 + x2, tmp))$coef
 ```
+
+おまけ
+
+```{r}
+summary(glm(y ~ x1 + x2, dat, family = binomial("logit")))$coef
+summary(glm(cbind(Yes, No) ~ x1 + x2, tmp, family = binomial("logit")))$coef
+```
+
+
 
