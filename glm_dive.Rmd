@@ -8,8 +8,134 @@ output: html_document
 [:contens]
 
 ## 背景
+一般化線形モデル(GLM)は一般に、線形回帰モデルを正規分布を含む指数分布族に拡張したものだと捉えられています。アイディアとしてはシンプルである割に非常に有用で、GLMを扱うことで
+ - 整数値（ポアソン回帰）
+ - 二値（ロジスティック回帰）
+ - 0〜1の実数（ベータ回帰）
+などをモデル化することができ、しかも回帰係数という非常に解釈性の高い結果を得ることができます[^1]。
+
+[^1]:そのため個人的にはGLMをモデリングのベースラインとすることが多く、ここで十分な精度が得られるかでその後の対応を決めたりしています
+
+そんなGLMですが、よく使う割には内容をよく理解できていないなと思うことがあったので、もう少しだけGLMを理解したいと思いRの`glm`の中身を見てみました。その内容をメモしておきます。
+
+ちなみにこの検証を行っている環境は以下の通りです：
+
+```{r}
+> sessionInfo()
+R version 3.3.3 (2017-03-06)
+Platform: x86_64-apple-darwin13.4.0 (64-bit)
+Running under: macOS  10.13.3
+
+locale:
+[1] ja_JP.UTF-8/ja_JP.UTF-8/ja_JP.UTF-8/C/ja_JP.UTF-8/ja_JP.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+[1] tools_3.3.3  yaml_2.1.13  knitr_1.15.1
+```
+
+
+## `glm`
+まずはRの`glm`がどのように定義されているかを見てみましょう。コンソールで`glm`と入力することで、以下のように`glm`という関数の定義を見ることができます。順番に見てみましょう。
+
+
+```{r}
+# > glm
+function (formula, family = gaussian, data, weights, subset, 
+    na.action, start = NULL, etastart, mustart, offset, control = list(...), 
+    model = TRUE, method = "glm.fit", x = FALSE, y = TRUE, contrasts = NULL, 
+    ...) 
+```
+
+まずはここで`glm`に渡す引数を定義しています。これらの引数でよく使われるのは`formula`、`family`、`data`でしょうか。それぞれ`glm`に渡す線形予測子、Yの従う分布、モデリングに用いるデータを指定しています。
+
+関数の定義は以下より始まりますが、細かい話は飛ばして`glm`の本体に向かいます。
+
+```{r}
+{
+
+   ##
+   ## 中略
+   ##
+
+   ## 本体はココ
+    fit <- eval(call(if(is.function(method)) "method" else method, 
+        x = X, y = Y, weights = weights, start = start, etastart = etastart, 
+        mustart = mustart, offset = offset, family = family, 
+        control = control, intercept = attr(mt, "intercept") > 0L))
+```
+
+`glm`の冒頭で`call`に対して`match.call()`を代入しているので、ここで呼ばれている`call`は`match.call`だと思うのですが、書き方を見る限り普通に`call`を呼び出しているような気がします。この辺りは正直よくわかりません。
+とは言え`call`も`match.call`も関数名となる文字列とその引数を指定することで関数を組み立て、さらに`eval`で括ることで関数として呼び出すことができるものです。つまり`eval(call(if(is.function(method)) "method" else method, ...`は`method(...)`と同じとなるはずです。以下の例で同じように動いていることが確認できます。
+
+
+```{r}
+# 関数を定義
+return_cube <- function(x) x^3
+
+# 普通に呼び出す
+return_cube(3)
+
+# eval(call(...))で呼び出す
+eval(call("return_cube", x = 3))
+
+# match.call
+# eval(match.call(return_cube, call("return_cube", x = 3)))
+# eval(match.call(return_cube, call("return_cube", 3)))
+# eval(match.call(return_cube, call(x = 3)))
+```
+
+`call`で指定している`method`というのは`glm`の引数で指定されているものでしたが、デフォルトでは`glm.fit`が入力されています。
+
+
+
+
+
+
+
+
+```{r}
+    
+    if (length(offset) && attr(mt, "intercept") > 0L) {
+        fit2 <- eval(call(if (is.function(method)) "method" else method, 
+            x = X[, "(Intercept)", drop = FALSE], y = Y, weights = weights, 
+            offset = offset, family = family, control = control, 
+            intercept = TRUE))
+        if (!fit2$converged) 
+            warning("fitting to calculate the null deviance did not converge -- increase 'maxit'?")
+        fit$null.deviance <- fit2$deviance
+    }
+    
+   ##
+   ## 中略
+   ##
+   
+   ## return
+   fit
+}
+```
+
+
+
+
+
+
 
 `glm`は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/glm.R)で定義されている。内容は以下のよう。
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
