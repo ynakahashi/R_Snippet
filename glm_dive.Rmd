@@ -8,11 +8,13 @@ output: html_document
 [:contens]
 
 ## 背景
-一般化線形モデル(GLM)は一般に、線形回帰モデルを正規分布を含む指数分布族に拡張したものだと捉えられています。アイディアとしてはシンプルである割に非常に有用で、GLMを扱うことで
+一般化線形モデル(GLM)は一般に線形回帰モデルを正規分布を含む指数分布族に拡張したものだと捉えられています。アイディアとしてはシンプルである割に非常に有用で、GLMにより
+
  - 整数値（ポアソン回帰）
  - 二値（ロジスティック回帰）
  - 0〜1の実数（ベータ回帰）
-などをモデル化することができ、しかも回帰係数という非常に解釈性の高い結果を得ることができます[^1]。
+
+などを扱うことができ、しかも回帰係数という非常に解釈性の高い結果を得ることができます[^1]。
 
 [^1]:そのため個人的にはGLMをモデリングのベースラインとすることが多く、ここで十分な精度が得られるかでその後の対応を決めたりしています
 
@@ -61,15 +63,22 @@ function (formula, family = gaussian, data, weights, subset,
    ##
 
    ## 本体はココ
-    fit <- eval(call(if(is.function(method)) "method" else method, 
-        x = X, y = Y, weights = weights, start = start, etastart = etastart, 
-        mustart = mustart, offset = offset, family = family, 
-        control = control, intercept = attr(mt, "intercept") > 0L))
+   fit <- eval(call(if(is.function(method)) "method" else method,
+       x = X, y = Y, weights = weights, start = start, etastart = etastart, 
+       mustart = mustart, offset = offset, family = family, 
+       control = control, intercept = attr(mt, "intercept") > 0L))
 ```
 
-`glm`の冒頭で`call`に対して`match.call()`を代入しているので、ここで呼ばれている`call`は`match.call`だと思うのですが、書き方を見る限り普通に`call`を呼び出しているような気がします。この辺りは正直よくわかりません。
-とは言え`call`も`match.call`も関数名となる文字列とその引数を指定することで関数を組み立て、さらに`eval`で括ることで関数として呼び出すことができるものです。つまり`eval(call(if(is.function(method)) "method" else method, ...`は`method(...)`と同じとなるはずです。以下の例で同じように動いていることが確認できます。
+`fit`を定義している部分ですが、最初の`call`は`glm`の冒頭で`match.call()`を代入しているので、ここで呼ばれているのは`match.call`だと思う…のですが、書き方を見る限り普通に`call`を呼び出しているような気がします。この辺りは正直よくわかりません。
+とは言え`call`も`match.call`も関数名となる文字列とその引数を指定することで関数を組み立て、さらに`eval`で括ることで関数として呼び出すことができるものです。つまり
 
+ > `eval(call(if(is.function(method)) "method" else method, ...`
+
+は
+
+> `method(...)`
+
+と同じとなるはずです。以下の例で同じように動いていることが確認できます。
 
 ```{r}
 # 関数を定義
@@ -87,9 +96,50 @@ eval(call("return_cube", x = 3))
 # eval(match.call(return_cube, call(x = 3)))
 ```
 
-`call`で指定している`method`というのは`glm`の引数で指定されているものでしたが、デフォルトでは`glm.fit`が入力されています。
+`call`で指定している`method`というのは`glm`の引数で指定されているものでしたが、デフォルトでは`glm.fit`が入力されています。したがって`method(...)`は`glm.fit(...)`となるはずです。そこで今度は`glm.fit`の定義を確認してみましょう。
 
 
+```{r}
+> glm.fit
+function (x, y, weights = rep(1, nobs), start = NULL, etastart = NULL, 
+    mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
+    control = list(), intercept = TRUE) 
+```
+
+このうちメインとなるのは以下の部分のようです。
+
+```{r}
+{
+
+   ##
+   ## 中略
+   ##
+
+      for (iter in 1L:control$maxit) {
+
+          ##
+          ## 中略
+          ##
+
+          fit <- .Call(C_Cdqrls, x[good, , drop = FALSE] * 
+              w, z * w, min(1e-07, control$epsilon/1000), check = FALSE)
+          
+          ##
+          ## 中略
+          ##
+      }
+
+   ##
+   ## 中略
+   ##
+
+```
+
+`.Call`はCで書かれたルーチンを呼び出すための関数で、ここでは`C_Cdqrls`という関数に引数を渡しています。ではこの`C_Cdqrls`はどこにあるのでしょうか？
+どうやらxxxxxに格納されているようなのですが、
+
+
+[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/lm.c)で定義されているようです。
 
 
 
