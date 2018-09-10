@@ -8,7 +8,7 @@ output: html_document
 [:contens]
 
 ## 背景
-一般化線形モデル(GLM)は一般に線形回帰モデルを正規分布を含む指数分布族に拡張したものだと捉えられています。アイディアとしてはシンプルである割に非常に有用で、GLMにより
+一般化線形モデル(GLM)は、一般に線形回帰モデルを正規分布を含む指数分布族に拡張したものだと捉えられています。アイディアとしてはシンプルである割に非常に有用で、GLMによって
 
  - 整数値（ポアソン回帰）
  - 二値（ロジスティック回帰）
@@ -51,34 +51,42 @@ function (formula, family = gaussian, data, weights, subset,
     ...) 
 ```
 
-まずはここで`glm`に渡す引数を定義しています。これらの引数でよく使われるのは`formula`、`family`、`data`でしょうか。それぞれ`glm`に渡す線形予測子、Yの従う分布、モデリングに用いるデータを指定しています。
+まずはここで`glm`に渡す引数を定義しています。これらの引数でよく使われるのは`formula`、`family`、`data`でしょうか。それぞれ`glm`に渡す線形予測子（数式）、Yの従う分布、モデリングに用いるデータを指定しています。その他、データポイントの一つ一つの重みを変えたい場合には`weights`、データの一部を使用する場合には`subset`を指定したりします。
 
-関数の定義は以下より始まりますが、細かい話は飛ばして`glm`の本体に向かいます。
-
+関数の定義は以下より始まりますが、細かい話は飛ばして`glm`の本体に向かいましょう。
 ```{r}
 {
 
+   call <- match.call()
+   if (is.character(family)) 
+       family <- get(family, mode = "function", envir = parent.frame())   
+   
    ##
    ## 中略
    ##
 
-   ## 本体はココ
+   ## 本体はココのようです
    fit <- eval(call(if(is.function(method)) "method" else method,
        x = X, y = Y, weights = weights, start = start, etastart = etastart, 
        mustart = mustart, offset = offset, family = family, 
        control = control, intercept = attr(mt, "intercept") > 0L))
 ```
 
-`fit`を定義している部分ですが、最初の`call`は`glm`の冒頭で`match.call()`を代入しているので、ここで呼ばれているのは`match.call`だと思う…のですが、書き方を見る限り普通に`call`を呼び出しているような気がします。この辺りは正直よくわかりません。
-とは言え`call`も`match.call`も関数名となる文字列とその引数を指定することで関数を組み立て、さらに`eval`で括ることで関数として呼び出すことができるものです。つまり
+`glm`の本体と呼べそうな部分はどうやらこの`fit`を定義している部分です。最初の`eval`は与えられた文字列をスクリプトとして解釈するための関数なので、`call`以降を実行するようです。また`call`は[ここ](http://www.is.titech.ac.jp/~mase/mase/html.jp/temp/call.jp.html)によると「***与えられた名前の関数の、与えられた引数への適応からなる未評価の表現式である***」とのことなので、`call`に続く`method`および残りの引数が`method(...)`の形で`eval`に与えられ、関数として評価されます。
+つまり
 
- > `eval(call(if(is.function(method)) "method" else method, ...`
+
+```{r}
+# eval(call(if(is.function(method)) "method" else method, ...
+```
 
 は
 
-> `method(...)`
+```{r}
+# method(...)
+```
 
-と同じとなるはずです。以下の例で同じように動いていることが確認できます。
+と同じとなるはずで、以下の例では同じように動いていることが確認できました。
 
 ```{r}
 # 関数を定義
@@ -91,13 +99,16 @@ return_cube(3)
 eval(call("return_cube", x = 3))
 
 # match.call
-# eval(match.call(return_cube, call("return_cube", x = 3)))
-# eval(match.call(return_cube, call("return_cube", 3)))
+eval(match.call(return_cube, call("return_cube", x = 3)))
+eval(match.call(return_cube, call("return_cube", 3)))
 # eval(match.call(return_cube, call(x = 3)))
 ```
 
-`call`で指定している`method`というのは`glm`の引数で指定されているものでしたが、デフォルトでは`glm.fit`が入力されています。したがって`method(...)`は`glm.fit(...)`となるはずです。そこで今度は`glm.fit`の定義を確認してみましょう。
+さて、`call`で指定している`method`は`glm`の引数で指定されているものでしたが、デフォルトでは`glm.fit`が入力されています。したがって`method(...)`は`glm.fit(...)`となるはずです。そこで今度は`glm.fit`の定義を確認してみましょう。
 
+
+## glm.fit
+`glm`と同じく、`glm.fit`についてもコンソールに直接打ち込むことで関数の定義を表示することができます。まずは引数から見てみましょう：
 
 ```{r}
 > glm.fit
@@ -106,10 +117,16 @@ function (x, y, weights = rep(1, nobs), start = NULL, etastart = NULL,
     control = list(), intercept = TRUE) 
 ```
 
-このうちメインとなるのは以下の部分のようです。
+`x`、`y`はそれぞれ説明変数と目的変数を指定し、その他の引数は`glm`から引き継がれるようですね。
+
+またメインとなるのは以下のループ部分のようです。
 
 ```{r}
 {
+
+   control <- do.call("glm.control", control)
+   x <- as.matrix(x)
+   xnames <- dimnames(x)[[2L]]
 
    ##
    ## 中略
@@ -117,16 +134,18 @@ function (x, y, weights = rep(1, nobs), start = NULL, etastart = NULL,
 
       for (iter in 1L:control$maxit) {
 
-          ##
-          ## 中略
-          ##
+         ##
+         ## 中略
+         ##
 
-          fit <- .Call(C_Cdqrls, x[good, , drop = FALSE] * 
-              w, z * w, min(1e-07, control$epsilon/1000), check = FALSE)
+         z <- (eta - offset)[good] + (y - mu)[good]/mu.eta.val[good]
+         w <- sqrt((weights[good] * mu.eta.val[good]^2)/variance(mu)[good])
+         fit <- .Call(C_Cdqrls, x[good, , drop = FALSE] * 
+             w, z * w, min(1e-07, control$epsilon/1000), check = FALSE)
           
-          ##
-          ## 中略
-          ##
+         ##
+         ## 中略
+         ##
       }
 
    ##
@@ -135,104 +154,142 @@ function (x, y, weights = rep(1, nobs), start = NULL, etastart = NULL,
 
 ```
 
-`.Call`はCで書かれたルーチンを呼び出すための関数で、ここでは`C_Cdqrls`という関数に引数を渡しています。ではこの`C_Cdqrls`はどこにあるのでしょうか？
-どうやらxxxxxに格納されているようなのですが、
-
-
-[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/lm.c)で定義されているようです。
-
-
-
-
-
+`do.call(...)`に渡す`control`は`list()`なので、`do.call("glm.control", list())`を実行すると以下が返ります；
 
 ```{r}
-    
-    if (length(offset) && attr(mt, "intercept") > 0L) {
-        fit2 <- eval(call(if (is.function(method)) "method" else method, 
-            x = X[, "(Intercept)", drop = FALSE], y = Y, weights = weights, 
-            offset = offset, family = family, control = control, 
-            intercept = TRUE))
-        if (!fit2$converged) 
-            warning("fitting to calculate the null deviance did not converge -- increase 'maxit'?")
-        fit$null.deviance <- fit2$deviance
-    }
-    
-   ##
-   ## 中略
-   ##
-   
-   ## return
-   fit
+> do.call("glm.control", list())
+$epsilon
+[1] 1e-08
+
+$maxit
+[1] 25
+
+$trace
+[1] FALSE
+```
+
+`maxit`が25なので、このループは最大で25回実行されます。ではこのループ内で何が行われているかというと、`z`と`w`を新たに定義し、それを`x`および互いに乗じた形で`C_Cdqrls`に渡しています。
+また`.Call`はCで書かれたルーチンを呼び出すための関数なので、ここでは`C_Cdqrls`という関数に`x * w`や`z * w`といった引数を渡しているようです。
+
+ではこの`C_Cdqrls`はどこにあるのでしょうか？今度は`C_Cdqrls`を探してみましょう。
+
+## C_Cdqrls
+実はこの`C_Cdqrls`は`stats`パッケージの関数として定義されています。しかしエクスポートされていないため、そのままコンソールに打ち込んでも表示されません。そのような場合には`:::`を使います。
+
+```{r}
+> stats:::C_Cdqrls
+$name
+[1] "Cdqrls"
+
+$address
+<pointer: 0x101a2cdd0>
+attr(,"class")
+[1] "RegisteredNativeSymbol"
+
+$dll
+DLL name: stats
+Filename:
+         /Library/Frameworks/R.framework/Versions/3.3/Resources/library/stats/libs/stats.so
+Dynamic lookup: FALSE
+
+$numParameters
+[1] 4
+
+attr(,"class")
+[1] "CallRoutine"      "NativeSymbolInfo"
+```
+
+しかし`stats:::C_Cdqrls`と打ち込んでも、これまで異なり関数の定義が表示されません。これは先ほど書いた通り、`C_Cdqrls`がCで書かれた関数であり、`.call`で呼び出されるためです。
+ではどこから呼び出されるのかと言うと私の環境では上記の`Filename`で指定されている場所のようなのですが、コレ自体は実行ファイル（stats.so）となっていてソースが見当たりません。
+それじゃどこにあるのかということで色々とググってみたところ、どうやら[ここ](https://github.com/wch/r-source/blob/trunk/src/library/stats/src/lm.c)で見れそうです。ファイル名を見てわかる通り、これは`lm`を定義しているコードです。`glm`は深く潜っていくと`lm`にたどり着くようです。
+
+`C_Cdqrls`を定義している部分を見てみると：
+
+```{c}
+SEXP Cdqrls(SEXP x, SEXP y, SEXP tol, SEXP chk)
+{
+   SEXP ans;
+
+   ###
+   ### 中略
+   ###
+
+   work = (double *) R_alloc(2 * p, sizeof(double));
+   F77_CALL(dqrls)(REAL(qr), &n, &p, REAL(y), &ny, &rtol,
+		   REAL(coefficients), REAL(residuals), REAL(effects),
+		   &rank, INTEGER(pivot), REAL(qraux), work);
+   SET_VECTOR_ELT(ans, 4, ScalarInteger(rank));
+   for(int i = 0; i < p; i++)
+	if(ip[i] != i+1) { pivoted = 1; break; }
+   SET_VECTOR_ELT(ans, 8, ScalarLogical(pivoted));
+   UNPROTECT(nprotect);
+
+   return ans;
 }
 ```
 
+ここまで来ると何がなんだか私にはわかりませんが、`return`で`ans`を返しているので`ans`を定義している箇所に着目すると、どうも`F77_CALL`が怪しい感じです。`F77_CALL`は[このページ](http://www.is.titech.ac.jp/~mase/mase/R-exts.jp/R-exts.jp.html)によるとCからFortranを呼び出すための関数のようです。
 
 
+## F77_CALL
+ではFortranで書かれた`dqrls`のソースコードはどこで見れるのかと言うと、[ここ](https://github.com/wch/r-source/blob/trunk/src/appl/dqrls.f)のようです。重要そうなところを抜き出すと：
 
 
-
-
-`glm`は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/R/glm.R)で定義されている。内容は以下のよう。
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-glm <- function(formula, family = gaussian, data, weights,
-                subset, na.action, start = NULL, etastart, mustart, offset,
-                control = list(...),
-                model = TRUE, method = "glm.fit",
-                x = FALSE, y = TRUE,
-                contrasts = NULL, ...) {
-
-   ##
-   ## 中略
-   ##
-
-   ## 本体はココ(L92)
-   fit <- eval(call(if(is.function(method)) "method" else method,
-                  x = X, y = Y, weights = weights, start = start,
-                  etastart = etastart, mustart = mustart,
-                  offset = offset, family = family, control = control,
-                  intercept = attr(mt, "intercept") > 0L))
-   
-   ## Null model
-   if(length(offset) && attr(mt, "intercept") > 0L) {
-     fit2 <-
-         eval(call(if(is.function(method)) "method" else method,
-                   x = X[, "(Intercept)", drop=FALSE], y = Y,
-                   weights = weights, offset = offset, family = family,
-                   control = control, intercept = TRUE))
-     ## That fit might not have converged ....
-     if(!fit2$converged)
-         warning("fitting to calculate the null deviance did not converge -- increase 'maxit'?")
-     fit$null.deviance <- fit2$deviance
-   }
-   
-   ##
-   ## 中略
-   ##
-   
-   ## return
-   fit
-}
+```{fortran}
+subroutine dqrls(x,n,p,y,ny,tol,b,rsd,qty,k,jpvt,qraux,work)
+      integer n,p,ny,k,jpvt(p)
+      double precision x(n,p),y(n,ny),tol,b(p,ny),rsd(n,ny),
+     .                 qty(n,ny),qraux(p),work(p)
+      integer info,j,jj,kk
+      
+      ### Householder transformation
+      call dqrdc2(x,n,n,p,tol,k,qraux,jpvt,work)
+      
+      ### 
+      if(k .gt. 0) then
+         do 20 jj=1,ny
+            call dqrsl(x,n,n,k,qraux,y(1,jj),rsd(1,jj),qty(1,jj),
+     1           b(1,jj),rsd(1,jj),rsd(1,jj),1110,info)
+   20       continue
+      else
+         do 35 i=1,n
+            do 30 jj=1,ny
+                rsd(i,jj) = y(i,jj)
+   30       continue
+   35   continue
+      endif
 ```
 
-`glm`の中では通常は`glm.fit`が呼ばれる。`glm.fit`に渡す`family`に応じた関数は[ここ](https://github.com/SurajGupta/r-source/blob/a28e609e72ed7c47f6ddfbb86c85279a0750f0b7/src/library/stats/R/family.R)で定義されていて、特にCで定義されたもの（binomial、logit関係）は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/family.c)にある。
+となっており、`dqrdc2`と`dqrsl`（`dqr**ls**`ではない、紛らわしい）を呼んでいます。
+これらはそれぞれ、
+ - Householder変換を行う関数
+ - そのアウトプットに対して加工および最小二乗解を与える関数
+となっています。
+
+随分かかりましたが、ここに来てようやく解を得ることができました。ここまでを振り返ると、
+ 1. Householder法による最小二乗解の推定（`C_Cdqrls`）
+ 1. 上記の反復による収束判定（`glm.fit`）
+ 1. もろもろの条件設定など（`glm`）
+となっているようです。
+
+長くなってしまったので、一旦切ります。
+
+
+
+
+
+
+
+
+
+
+
+`glm.fit`に渡す`family`に応じた関数は[ここ](https://github.com/SurajGupta/r-source/blob/a28e609e72ed7c47f6ddfbb86c85279a0750f0b7/src/library/stats/R/family.R)で定義されていて、特にCで定義されたもの（binomial、logit関係）は[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/family.c)にある。
 
 
 `glm`の本体となる`glm.fit`は以下のよう。反復のためのアルゴリズムとしてはIRLSだが、その中では`.Call(C_Cdqrls)`が呼ばれている。[ここ](https://github.com/SurajGupta/r-source/blob/master/src/library/stats/src/lm.c)で定義されていて、中ではさらにfortranで書かれた関数([ここ](https://github.com/SurajGupta/r-source/blob/master/src/appl/dqrls.f)で定義されている)を呼び出している。
+
+
 内容を見ると、最小二乗法をQR分解で解いている（Householder法の様子）。
 
 結局、`family`や`weights`などに合わせて`x`や`y`などを変換し、QR分解による最小二乗法を反復しながら適用しているというのが`glm`の中身。
