@@ -6,48 +6,165 @@ output: html_document
 ---
 
 ### Libraries
-
-```{r}
-install.packages("rchallenge")
-install.packages("party")
+```{r, message = F}
+# install.packages("rchallenge")
+# install.packages("party")
+library(tidyverse)
 library(rchallenge)
 library(caret)
 library(party)
+library(randomForest)
 library(edarf)
+library(PRROC)
 ```
 
+### Set data
 ```{r}
 d <- german
 dummy <- dummyVars( ~ ., data = d)
 df <- as.data.frame(predict(dummy, d))
 df$Class.Good <- NULL
+
+set.seed(123)
+idx <- createDataPartition(df$Class.Bad, p = 0.7, list = F, times = 1)
+train <- df[idx, ]
+valid <- df[-idx, ]
+```
+
+### Define function
+```{r}
+get_result <- function(obj, df, thr) {
+   
+   library(PRROC)
+   if(any(class(obj) == "randomForest")) {
+      df$prob <- predict(obj, newdata = df, type = "prob")[, 2]
+   } else {
+      df$prob <- do.call("rbind", predict(obj, newdata = df, type = "prob"))[, 2]
+   }
+   df$pred <- ifelse(df$prob > thr, 1, 0)
+   b <- df[df$Class.Bad == 1, "prob"]
+   g <- df[df$Class.Bad == 0, "prob"]
+   
+   # pr  <- pr.curve(b, g, curve = TRUE)
+   roc <- roc.curve(b, g, curve = TRUE)
+   
+   # par(mfrow = c(2, 1))
+   # plot(pr)
+   plot(roc)
+  
+}
+```
+
+
+
+### ctree
+```{r}
+ct <- ctree(as.factor(Class.Bad) ~ ., data = train)
+plot(ct)
 ```
 
 
 ```{r}
-t <- ctree(Class.Bad ~ ., data = df)
-plot(t)
+p_train <- sum(train$Class.Bad) / nrow(train)
+get_result(ct, train, p_train)
+get_result(ct, valid, p_train)
+```
 
 
-r <- cforest(Class.Bad ~ ., data = df, 
-             controls = cforest_unbiased(ntree = 50L,
-                                         mtry = sqrt(ncol(df))))
+
+
+### cforest
+```{r}
+cf <- cforest(as.factor(Class.Bad) ~ ., data = train,
+              controls = cforest_unbiased(ntree = 500L,
+                                          mtry = sqrt(ncol(train))))
+
+cf <- cforest(as.factor(Class.Bad) ~ ., data = train, 
+              controls = cforest_unbiased(ntree = 3L,
+                                          mtry = 1))
+```
+
+### Partial Dependency Plot
+```{r}
+# p <- partial_dependence(cf, data = valid, vars = "Duration")
+# plot_pd(p)
+
+# varimp(cf)
+# i <- variable_importance(r, data = valid, vars = names(valid)[-63])
+# plot_imp(i)
+```
+
+### results
+```{r}
+get_result(cf, train, p_train)
+get_result(cf, valid, p_train)
+```
+
+
+```{r}
+prettytree(cf@ensemble[[1]])
+```
+
+
+### cforestの結果をプロット
+```{r}
+# ct_tree <- ct@tree
+# class(ct_tree)
+# party:::nterminal(ct_tree)
+
+cf <- cforest(as.factor(Class.Bad) ~ ., data = train, 
+              controls = cforest_classical(ntree = 3L,
+                                           mtry = 3))
+
+cf_tree <- prettytree(cf@ensemble[[2]], 
+                      names(cf@data@get("input"))) 
+nt <- new("BinaryTree") 
+nt@tree <- cf_tree
+nt@data <- cf@data 
+nt@responses <- cf@responses 
+plot(nt)
+```
+
+
+
+
+
+
+
+
+
+
+
+### おまけのRandom Forest
+```{r}
+set.seed(123)
+rf <- randomForest(as.factor(Class.Bad) ~ ., data = train,
+                   ntree = 1000L, mtry = sqrt(ncol(train)))
 ```
 
 ```{r}
-p <- partial_dependence(r, data = df, vars = "Duration")
-plot_pd(p)
-i <- variable_importance(r, data = df, vars = names(df)[-63])
-plot_imp(i)
+get_result(rf, train, p_train)
+get_result(rf, valid, p_train)
 ```
+
 
 ```{r}
-prd <- predict(r, df, "response")
-prd_b <- prd[prd]
-prd_g <- prd[prd]
-
-library(PRROC)
-res_pr  <- pr.curve(prd_b, prd_g, curve = TRUE)
-res_roc <- roc.curve(prd_b, prd_g, curve = TRUE)
+prd <- data.frame(
+   ct = do.call("rbind", predict(ct, newdata = valid, type = "prob"))[, 2],
+   cf = do.call("rbind", predict(cf, newdata = valid, type = "prob"))[, 2],
+   rf = predict(rf, newdata = valid, type = "prob")[, 2]
+)
 ```
+
+
+```{r}
+psych::pairs.panels(prd)
+```
+
+
+
+
+
+
+
 
