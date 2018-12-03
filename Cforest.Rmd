@@ -1,0 +1,53 @@
+---
+title: "Cforest"
+author: "ynakahashi"
+date: "2018/12/3"
+output: html_document
+---
+
+### Libraries
+
+```{r}
+install.packages("rchallenge")
+install.packages("party")
+library(rchallenge)
+library(caret)
+library(party)
+library(edarf)
+```
+
+```{r}
+d <- german
+dummy <- dummyVars( ~ ., data = d)
+df <- as.data.frame(predict(dummy, d))
+df$Class.Good <- NULL
+```
+
+
+```{r}
+t <- ctree(Class.Bad ~ ., data = df)
+plot(t)
+
+
+r <- cforest(Class.Bad ~ ., data = df, 
+             controls = cforest_unbiased(ntree = 50L,
+                                         mtry = sqrt(ncol(df))))
+```
+
+```{r}
+p <- partial_dependence(r, data = df, vars = "Duration")
+plot_pd(p)
+i <- variable_importance(r, data = df, vars = names(df)[-63])
+plot_imp(i)
+```
+
+```{r}
+prd <- predict(r, df, "response")
+prd_b <- prd[prd]
+prd_g <- prd[prd]
+
+library(PRROC)
+res_pr  <- pr.curve(prd_b, prd_g, curve = TRUE)
+res_roc <- roc.curve(prd_b, prd_g, curve = TRUE)
+```
+
