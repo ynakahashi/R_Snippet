@@ -1,0 +1,39 @@
+---
+title: "Untitled"
+author: "ynakahashi"
+date: "2019/1/16"
+output: html_document
+---
+
+
+```{r}
+x <- seq(-3, 3, 0.1)
+y <- sin(x)
+plot(x, y, type = "l")
+```
+
+
+
+```{r}
+iteration <- 0
+threshold <- 1e-02
+x_old <- -1
+updates <- 1
+
+while (updates > threshold) {
+   x_new <- x_old - sin(x_old)/cos(x_old)
+   updates <- abs(x_new - x_old)
+   x_old <- x_new
+   iteration <- iteration + 1
+   cat(sprintf("Iterations: %i, X_New: %f \n", iteration, x_new))
+   if (iteration > 100) break
+}
+
+```
+
+
+```{r}
+quad <- function(x) 2 * (x-1)^2 + 3
+plot(x, quad(x), type = "l")
+```
+
