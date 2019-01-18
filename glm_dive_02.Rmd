@@ -22,7 +22,7 @@ updates <- 1
 
 while (updates > threshold) {
    x_new <- x_old - sin(x_old)/cos(x_old)
-   updates <- abs(x_new - x_old)
+   updates <- abs(sin(x_new))
    x_old <- x_new
    iteration <- iteration + 1
    cat(sprintf("Iterations: %i, X_New: %f \n", iteration, x_new))
@@ -33,7 +33,34 @@ while (updates > threshold) {
 
 
 ```{r}
-quad <- function(x) 2 * (x-1)^2 + 3
-plot(x, quad(x), type = "l")
+x <- seq(-2, 3, 0.1)
+quad <- function(x) -(x-1)^2 + 3
+derive <- function(x) -2 * x + 2
+plot(x, quad(x), type = "l", ylim = c(-10, 10), ylab = "")
+par(new = T)
+plot(x, derive(x), type = "l", col = "red", ylim = c(-10, 10), ylab = "f(x) or f'(x)")
+lines(x, rep(0, length(x)), lty = 2, col = "blue")
 ```
+
+
+```{r}
+iteration <- 0
+threshold <- 1e-02
+x_old <- 0
+updates <- 1
+
+while (updates > threshold) {
+   x_new <- x_old - quad(x_old)/derive(x_old)
+   updates <- abs(quad(x_new))
+   x_old <- x_new
+   iteration <- iteration + 1
+   cat(sprintf("Iterations: %i, X_New: %f \n", iteration, x_new))
+}
+
+```
+
+```{r}
+quad(-0.732143)
+```
+
 
