@@ -1,0 +1,169 @@
+---
+title: "Untitled"
+author: "ynakahashi"
+date: "2019/1/16"
+output: html_document
+---
+
+
+### Simulate data
+```{r}
+# set.seed(123)
+n <- 5000
+x <- cbind(rep(1, n), runif(n, -1, 1))
+b <- c(1, 0.5)
+eta <- x %*% b
+p <- 1/(1 + exp(-eta))
+
+d <- data.frame(
+   y = rbinom(n, 1, p),
+   x = x[, -1])
+
+## Check
+glm(y ~ x, d, family = binomial("logit"))$coef
+```
+
+
+n : # obs
+m : sum(y)
+$log(n, m) + m * log(p) + (n-m) * log(1-p) $
+$ m/p + (n-m) / (1-p)$
+
+
+### Define likelihood & score functions
+```{r}
+get_p <- function(b, d) {
+   
+   n <- nrow(d)
+   m <- sum(d$y)
+
+   X <- d$x
+   eta <- X * b
+   p <- 1/(1 + exp(-eta))
+   
+   return(p)
+}
+
+my_loglik <- function(b, d) {
+
+   p <- get_p(b, d)
+   
+   # re <- 0
+   # for (i in 1:nrow(d)) {
+   #    re <- re + d$y[i] * log(p[i]) + (n - m) / n * log(1 - p[i])
+   # }
+   
+   re <- sum(d$y * log(p) + (n - m) / n * log(1 - p))
+   return(re)
+}
+# my_loglik(b, d)
+
+my_score <- function(b, d) {
+   
+   p <- get_p(b, d)
+   
+   # re <- 0
+   # for (i in 1:nrow(d)) {
+   #    re <- re + d$y[i] / p[i] - (n - m) / n / (1 - p[i])
+   # }
+   
+   re <- sum(d$y / p - (n - m) / n / (1 - p))
+   return(re)
+}
+# my_score(b, d)
+```
+
+
+### Newton Raphson -- not working
+```{r}
+iteration <- 0
+threshold <- 1e-03
+x_old <- b0 <- 1.5
+updates <- 1
+
+while (updates > threshold) {
+   x_new <- x_old - my_loglik(x_old, d) / my_score(x_old, d)
+   updates <- abs(my_loglik(x_new, d))
+   x_old <- x_new
+   iteration <- iteration + 1
+   cat(sprintf("Iterations: %i, X_New: %f \n", iteration, x_new))
+   if (iteration > 100) break
+}
+
+```
+
+
+
+### IRLS
+```{r}
+get_X <- function(d) {
+   
+   n <- nrow(d)
+   return(cbind(rep(1, n), d[, -1]))
+   
+}
+
+get_p <- function(b, d) {
+   
+   n <- nrow(d)
+   m <- sum(d$y)
+
+   X <- get_X(d)
+   eta <- X %*% b
+   p <- 1/(1 + exp(-eta))
+   
+   return(p)
+}
+
+get_z <- function(b, d) {
+   
+   p <- get_p(b, d)
+   X <- get_X(d)
+   z <- X %*% b + (d$y - p) * ((1 - p) / p)
+   
+   return(z)
+}
+
+get_W <- function(b, d) {
+   
+   p <- get_p(b, d)
+   q <- 1 - p
+   n <- nrow(d)
+   
+   w <- 1 / (p * q) * (p * q)^2 # var(Y) = p * q
+   W <- matrix(0, n, n)
+   diag(W) <- w
+
+   return(W)
+}
+```
+
+
+```{r}
+iteration <- 0
+b_old <- b0 <- c(2, 0.1)
+diff <- diff_0 <- 1
+threshold <- 1e-03
+X <- get_X(d)
+
+while (diff > threshold) {
+   
+   z <- get_z(b_old, d)
+   W <- get_W(b_old, d)
+   
+   b_new <- solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% z
+   diff  <- sum(abs(b_old - b_new))
+   b_old <- b_new
+   
+   iteration <- iteration + 1
+   cat(sprintf("Iterations: %i \n", iteration))
+   # cat(sprintf("Iterations: %i, b_New: %f \n", iteration, b_new))
+   if (iteration > 100) break
+
+}
+
+```
+
+
+
+
