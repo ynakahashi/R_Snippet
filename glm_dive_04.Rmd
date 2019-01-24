@@ -6,168 +6,18 @@ output: html_document
 ---
 
 
-### Simulate data
-```{r}
-# set.seed(123)
-n <- 10
-x <- cbind(rep(1, n), runif(n, -1, 1))
-b <- c(1, 0.5)
-eta <- x %*% b
-p <- 1/(1 + exp(-eta))
-
-d <- data.frame(
-   y = rbinom(n, 1, p),
-   x = x[, -1])
-
-## Check
-glm(y ~ x, d, family = binomial("logit"))$coef
-```
-
-
-### Define likelihood & score functions
-```{r}
-get_p <- function(b, d) {
-   
-   n <- nrow(d)
-   m <- sum(d$y)
-
-   X <- d$x
-   eta <- X * b
-   p <- 1/(1 + exp(-eta))
-   
-   return(p)
-}
-
-my_loglik <- function(b, d) {
-
-   p <- get_p(b, d)
-   
-   # re <- 0
-   # for (i in 1:nrow(d)) {
-   #    re <- re + d$y[i] * log(p[i]) + (n - m) / n * log(1 - p[i])
-   # }
-   
-   re <- sum(d$y * log(p) + (n - m) / n * log(1 - p))
-   return(re)
-}
-# my_loglik(b, d)
-
-my_score <- function(b, d) {
-   
-   p <- get_p(b, d)
-   
-   # re <- 0
-   # for (i in 1:nrow(d)) {
-   #    re <- re + d$y[i] / p[i] - (n - m) / n / (1 - p[i])
-   # }
-   
-   re <- sum(d$y / p - (n - m) / n / (1 - p))
-   return(re)
-}
-# my_score(b, d)
-```
-
-
-### Newton Raphson -- not working
-```{r}
-iteration <- 0
-threshold <- 1e-03
-x_old <- b0 <- 1.5
-updates <- 1
-
-while (updates > threshold) {
-   x_new <- x_old - my_loglik(x_old, d) / my_score(x_old, d)
-   updates <- abs(my_loglik(x_new, d))
-   x_old <- x_new
-   iteration <- iteration + 1
-   cat(sprintf("Iterations: %i, X_New: %f \n", iteration, x_new))
-   if (iteration > 100) break
-}
-
-```
-
-
-
-### IRLS
-```{r}
-get_X <- function(d) {
-   n <- nrow(d)
-   return(cbind(rep(1, n), d[, -1]))
-}
-
-get_p <- function(b, d) {
-   n <- nrow(d)
-   m <- sum(d$y)
-
-   X <- get_X(d)
-   eta <- X %*% b
-   p <- 1/(1 + exp(-eta))
-   
-   return(p)
-}
-
-get_z <- function(b, p, q) {
-   z <- X %*% b + (d$y - p) * ((1 - p) / p)
-   return(z)
-}
-
-get_W <- function(b, p, q) {
-   w <- 1 / (p * q) * (p * q)^2 # var(Y) = p * q
-   return(w)
-}
-```
-
-
-```{r}
-iteration <- 0
-b_old <- b0 <- c(2, 0.3)
-diff <- diff_0 <- 1
-threshold <- 1e-03
-X <- get_X(d)
-n <- nrow(d)
-W <- matrix(0, n, n)
-
-while (diff > threshold) {
-   
-   p <- get_p(b_old, d)
-   q <- 1 - p
-
-   z <- get_z(b_old, p, q)
-   w <- get_W(b_old, p, q)
-   diag(W) <- w
-   
-   xwx <- t(X) %*% W %*% X
-   xwz <- t(X) %*% W %*% z
-   
-   b_new <- solve(xwx) %*% xwz
-   diff  <- sum(abs(b_old - b_new))
-   b_old <- b_new
-   
-   iteration <- iteration + 1
-   cat(sprintf("Iterations: %i \n", iteration))
-   # cat(sprintf("Iterations: %i, b_New: %f \n", iteration, b_new))
-   if (iteration > 100) break
-
-}
-
-```
-
-
-
-
-
+### Dobson
 ```{r}
 y <- c(2, 3, 6, 7, 8, 9, 10, 12, 15)
 x <- c(-1, -1, 0, 0, 0, 0, 1, 1, 1)
 n <- length(y)
 ```
 
-
 ```{r}
 iteration <- 0
 b_old <- b0 <- c(7, 5)
 diff <- diff_0 <- 1
-threshold <- 1e-04
+threshold <- 1e-03
 X <- cbind(rep(1, n), x)
 n <- length(y)
 W <- matrix(0, n, n)
@@ -186,8 +36,9 @@ while (diff > threshold) {
    b_old <- b_new
    
    iteration <- iteration + 1
-   cat(sprintf("Iterations: %i \n", iteration))
-   # cat(sprintf("Iterations: %i, b_New: %f \n", iteration, b_new))
+   # cat(sprintf("Iterations: %i \n", iteration))
+   cat(sprintf("Iterations: %i, b_New_1: %1.8f, b_New_2: %1.8f \n", 
+               iteration, b_new[1], b_new[2]))
    if (iteration > 100) break
 
 }
@@ -198,4 +49,239 @@ while (diff > threshold) {
 
 
 
+## Newton Raphson
+### Define likelihood & score functions
+```{r}
+get_p <- function(b, d) {
+   
+   n <- nrow(d)
+   m <- sum(d$y)
 
+   X <- d$x
+   eta <- X * b
+   p <- 1/(1 + exp(-eta))
+   
+   return(p)
+}
+
+my_loglik <- function(b, d) {
+
+   p <- get_p(b, d)
+   
+   re <- 0
+   for (i in 1:nrow(d)) {
+      re <- re + d$y[i] * log(p[i]) + (1 - d$y[i]) * log(1 - p[i])
+   }
+   
+   # re <- sum(d$y * log(p) + (n - m) / n * log(1 - p))
+   return(re)
+}
+# my_loglik(b, d)
+
+my_score <- function(b, d) {
+   
+   p <- get_p(b, d)
+   
+   re <- 0
+   for (i in 1:nrow(d)) {
+      re <- re + (d$y[i] - p[i]) / (p[i] * (1 - p[i]))
+   }
+   
+   # re <- sum(d$y / p - (n - m) / n / (1 - p))
+   return(re)
+}
+# my_score(b, d)
+```
+
+### Simulate data
+```{r}
+# set.seed(123)
+n <- 10
+x <- cbind(rep(1, n), runif(n, -1, 1))
+b <- c(1, 0.5)
+eta <- x %*% b
+p <- 1/(1 + exp(-eta))
+
+d <- data.frame(
+   y = rbinom(n, 1, p),
+   x = x[, -1])
+
+## Check
+glm(y ~ x, d, family = binomial("logit"))$coef
+```
+
+### Run -- not working
+```{r}
+iteration <- 0
+threshold <- 1e-03
+noise <- 1e-05
+seupdates <- 1
+
+while (updates > threshold) {
+   
+   x_new <- x_old - my_score(x_old, d) / my_score(x_old, d)
+   updates <- abs(my_loglik(x_new, d))
+   x_old <- x_new
+   iteration <- iteration + 1
+   cat(sprintf("Iterations: %i, X_New: %f \n", iteration, x_new))
+   if (iteration > 100) break
+}
+
+```
+
+
+
+## IRLS
+### Binomial
+```{r}
+get_eta <- function(b) {
+   eta <- X %*% b
+   return(eta)
+}
+
+get_mu <- function(b) {
+   mu <- exp(X %*% b) / (1 + exp(X %*% b))
+   return(mu)
+}
+
+get_var <- function(b) {
+   var <- get_mu(b) * (1 - get_mu(b))
+   return(var)
+}
+
+get_z <- function(b) {
+   p <- get_mu(b)
+   z <- get_eta(b) + (d$y - p) / (1/p + 1/(1-p))
+   return(z)
+}
+
+get_W <- function(b) {
+   t <- get_mu(b) * (1 - get_mu(b))
+   w <- t^2 / get_var(b)
+   return(w)
+}
+```
+
+### Simulate data
+```{r}
+# set.seed(123)
+n <- 1000
+x <- cbind(rep(1, n), runif(n, -1, 1))
+b <- c(1, 0.5)
+eta <- x %*% b
+p <- 1/(1 + exp(-eta))
+
+d <- data.frame(
+   y = rbinom(n, 1, p),
+   x = x[, -1])
+
+## Check
+glm(y ~ x, d, family = binomial("logit"))$coef
+```
+
+
+```{r}
+iteration <- 0
+b_old <- c(1, 0.3)
+threshold <- 1e-08
+diff <- 1
+X <- cbind(rep(1, n), d[, -1])
+n <- nrow(d)
+W <- matrix(0, n, n)
+
+while (diff > threshold) {
+
+   z <- get_z(b_old)
+   w <- get_W(b_old)
+   diag(W) <- w
+   
+   xwx <- t(X) %*% W %*% X
+   xwz <- t(X) %*% W %*% z
+   
+   b_new <- solve(xwx) %*% xwz
+   diff  <- sum(abs(b_old - b_new))
+   b_old <- b_new
+   
+   iteration <- iteration + 1
+   # cat(sprintf("Iterations: %i \n", iteration))
+   if (iteration %% 100 == 0) {
+      cat(sprintf("Iterations: %i, b_New_1: %1.8f, b_New_2: %1.8f \n", 
+                  iteration, b_new[1], b_new[2]))
+   }
+   if (iteration > 500) break
+}
+coef(glm(y ~ x, d, family = binomial("logit")))
+```
+
+
+
+
+
+### Poisson
+```{r}
+get_eta <- function(b) {
+   eta <- X %*% b
+   return(eta)
+}
+
+get_mu <- function(b) {
+   mu <- exp(X %*% b)
+   return(mu)
+}
+
+get_var <- get_mu
+
+get_z <- function(b) {
+   z <- get_eta(b) + (d$y - get_mu(b)) / get_mu(b)
+   return(z)
+}
+
+get_W <- function(b) {
+   w <- get_mu(b)^2 / get_var(b)
+   return(w)
+}
+```
+
+
+### Simulate data
+```{r}
+# set.seed(123)
+n <- 100
+x <- cbind(rep(1, n), runif(n, -1, 1))
+b <- c(1, 0.5)
+eta <- x %*% b
+
+d <- data.frame(
+   y = rpois(n, eta),
+   x = x[, -1])
+
+iteration <- 0
+b_old <- c(2, 0.3)
+threshold <- 1e-06
+diff <- 1
+X <- cbind(rep(1, n), d[, -1])
+n <- nrow(d)
+W <- matrix(0, n, n)
+
+while (diff > threshold) {
+
+   z <- get_z(b_old)
+   w <- get_W(b_old)
+   diag(W) <- w
+   
+   xwx <- t(X) %*% W %*% X
+   xwz <- t(X) %*% W %*% z
+   
+   b_new <- solve(xwx) %*% xwz
+   diff  <- sum(abs(b_old - b_new))
+   b_old <- b_new
+   
+   iteration <- iteration + 1
+   # cat(sprintf("Iterations: %i \n", iteration))
+   cat(sprintf("Iterations: %i, b_New_1: %1.8f, b_New_2: %1.8f \n", 
+               iteration, b_new[1], b_new[2]))
+   if (iteration > 100) break
+
+}
+coef(glm(y ~ x, d, family = poisson("log")))
+```
