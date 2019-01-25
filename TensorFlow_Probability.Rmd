@@ -1,0 +1,63 @@
+---
+title: "TensorFlow Probability"
+author: "ynakahashi"
+date: "2019/1/25"
+output: html_document
+---
+
+### Load libraries
+```{r}
+library(tensorflow)
+```
+
+### Import TF Probability
+```{r}
+install_tensorflow(
+  extra_packages = c("keras", "tensorflow-hub", "tensorflow-probability"),
+  version = "1.12"
+)
+```
+
+```{r}
+tfp <- import("tensorflow_probability")
+tfd <- tfp$distributions
+```
+
+```{r}
+n <- tfd$Normal(loc = 0, scale = 1)
+n$sample(6L)
+```
+
+```{r}
+library(keras)
+use_implementation("tensorflow")
+# library(tensorflow)
+# tfe_enable_eager_execution(device_policy = "silent")
+```
+
+```{r}
+n <- tfd$Normal(loc = 0, scale = 1)
+```
+
+```{r}
+n$sample(6L)
+```
+
+```{r}
+n$log_prob(c(-1, 0, 1))
+```
+
+```{r}
+b <- tfd$Bernoulli(0.9)
+b$sample(10L)
+```
+
+```{r}
+b$log_prob(c(0,1,0,0))
+```
+
+
+```{r}
+
+```
+
