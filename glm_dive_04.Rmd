@@ -164,25 +164,25 @@ get_W <- function(b) {
 
 ### Simulate data
 ```{r}
-# set.seed(123)
-n <- 1000
+set.seed(789)
+n <- 100
 x <- cbind(rep(1, n), runif(n, -1, 1))
 b <- c(1, 0.5)
 eta <- x %*% b
-p <- 1/(1 + exp(-eta))
+p <- exp(eta)/(1 + exp(eta))
 
 d <- data.frame(
    y = rbinom(n, 1, p),
    x = x[, -1])
 
 ## Check
-glm(y ~ x, d, family = binomial("logit"))$coef
+# glm(y ~ x, d, family = binomial("logit"))$coef
 ```
 
 
 ```{r}
 iteration <- 0
-b_old <- c(1, 0.3)
+b_old <- c(2, 0.3)
 threshold <- 1e-08
 diff <- 1
 X <- cbind(rep(1, n), d[, -1])
@@ -210,6 +210,7 @@ while (diff > threshold) {
    }
    if (iteration > 500) break
 }
+b_new
 coef(glm(y ~ x, d, family = binomial("logit")))
 ```
 
@@ -245,14 +246,14 @@ get_W <- function(b) {
 
 ### Simulate data
 ```{r}
-# set.seed(123)
+set.seed(123)
 n <- 100
 x <- cbind(rep(1, n), runif(n, -1, 1))
 b <- c(1, 0.5)
-eta <- x %*% b
+lam <- exp(x %*% b)
 
 d <- data.frame(
-   y = rpois(n, eta),
+   y = rpois(n, lam),
    x = x[, -1])
 
 iteration <- 0
