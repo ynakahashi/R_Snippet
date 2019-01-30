@@ -1,0 +1,141 @@
+---
+title: "RF with character"
+author: "ynakahashi"
+date: "2019/1/30"
+output: html_document
+---
+
+## randomForestではCharacterは使わないようにしよう
+Rの `randomForest` を使っていてはまったのでメモしておきます。
+
+[contents:]
+
+### 1. 目的変数がcharacterだとカテゴリとして扱ってくれない
+最初にはまったのがこちらでした。目的変数が`character`だと、カテゴリ変数として
+扱ってもらえないため分類ではなく回帰としてプログラムが進んでしまい、エラーが返ります。
+
+まずは以下のようにデータを読み込みます。ちなみにこのデータは`Telco Customer Churn`で、
+[Kaggle](https://www.kaggle.com/blastchar/telco-customer-churn)からDLしてきました。
+
+```{r}
+library(tidyverse)
+d <- read_csv("./Data/WA_Fn-UseC_-Telco-Customer-Churn.csv")
+```
+
+このデータを使って下記のように`randomForest`を実行します：
+
+```{r}
+library(randomForest)
+randomForest(Churn ~ gender, d)
+```
+
+「何このエラー？？」と思いながら`randomForest`の中身を見てみると、以下のような記述が見つかります。
+
+```{r}
+addclass <- is.null(y)
+classRF <- addclass || is.factor(y)
+```
+
+`classRF`というのはカテゴリ変数であるかを判定するbooleanなのですが、
+`is.factor`で判断しているんですね。
+ここで`FALSE`が返ると、後の工程で分類のためのプログラム（Cで書かれたもの、多分[コレ](https://github.com/cran/randomForest/blob/master/src/rf.c)のL38 ~ L540）ではなく、回帰用のプログラム（多分[コレ](https://github.com/cran/randomForest/blob/master/src/regrf.c)のL22 ~ L340）が呼ばれてしまうようです。
+
+ちなみに`randomForest`はformulaでもmatrixでも対応できるような総称関数になっているので、
+コンソールで`randomForest`と叩いても中身を見ることはできません。
+そのような場合、まずは`methods`でどのような関数が含まれているかを確認しましょう。
+
+```{r}
+methods(randomForest)
+```
+
+`randomForest`という関数は`randomForest.default`と`randomForest.formula`という関数を
+総称しているようです。前者がメインのようなので以下のコマンドを実行します。
+
+```{r}
+getS3method("randomForest", "default")
+```
+
+そうすると先程の関数定義を確認することができます。
+さらにちなみに、`lookup`というパッケージを用いることでそういった総称関数やCで書かれた関数などを
+RStudio上でシンタックスハイライトさせながら表示することができます。
+大変便利ですので、是非こちらの記事を参考にして使ってみてください。
+
+https://uribo.hatenablog.com/entry/2017/08/10/075220
+
+
+### 2. 説明変数がcharacterだとダミー化してくれない
+次にはまったのがこちらでした。
+さきほどエラーが返ってきた`randomForest`を、目的変数をfactorに直して実行してみましょう：
+
+```{r}
+d2 <- 
+   d %>% 
+   mutate(Churn = as.factor(Churn))
+
+randomForest(Churn ~ gender, d2)
+```
+
+`NA`がありますというエラーなのですが、このデータでは`NA`は
+`TotalCharges`列にしかありませんので、どうやら途中で生成されているようです。
+ちなみにRStudioでRMarkdownを使っているとき、チャンク内で実行すると上記のエラーが表示されるのですが、
+コンソールで実行すると以下のようにもう少し情報が追加されます：
+
+```{r}
+> randomForest(Churn ~ gender, d2)
+ randomForest.default(m, y, ...) でエラー: 
+   外部関数の呼び出し (引数 1) 中に NA/NaN/Inf があります 
+ 追加情報:  警告メッセージ: 
+ data.matrix(x) で:   強制変換により NA が生成されました 
+```
+
+`data.matrix`が悪さしているようですね。私は普段チャンク内での実行させることが多いため、
+この表示に気付かなくて時間を無駄にしました。
+
+`randomForest.default`を見ると以下の記述があります。
+
+```{r}
+if (is.data.frame(x)) {
+   xlevels <- lapply(x, mylevels)
+   ncat <- sapply(xlevels, length)
+   ncat <- ifelse(sapply(x, is.ordered), 1, ncat)
+   x <- data.matrix(x)
+```
+
+ここでxを`data.matrix(x)`でダミー化しようとしたものの、`character`であったために失敗しているようですね。
+
+```{r}
+d2 %>% select(Churn, gender) %>% str()
+```
+
+
+```{r}
+d2 %>% select(Churn, gender) %>% data.matrix(.) %>% head()
+```
+
+それでは`factor`に直して実行してみましょう。
+
+```{r}
+d3 <- d2 %>% select(Churn, gender) %>% mutate(gender = as.factor(.$gender))
+str(d3)
+```
+
+```{r}
+randomForest(Churn ~ gender, d3)
+```
+
+ようやく動くようになりました。
+ちなみにこのようなエラーにはまらないためには、例えば`read_csv`の代わりに（`StringsAsFactors`を`FALSE`にしないで）`read.csv`を使うか、`randomForest`の代わりに`ranger`を使うという手があります。
+
+```{r}
+ranger::ranger(Churn ~ gender, d)
+```
+
+もとのデータでも動いていますね！
+
+### 終わりに
+今回のエラーはモデリングに入る前にダミー化を行っていれば防げたものでしたが、
+Rだとカテゴリ変数をそのまま渡しても動くものが多いのでついサボってしまいました。
+普段からダミー化をする習慣が身についている人や、多分Pythonでははまらないんでしょうね。
+ただ今回はエラーを追いかけながら総称関数のソースの便利な確認方法を知ることができたので良かったです。
+
+
