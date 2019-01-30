@@ -5,22 +5,110 @@ date: "2019/1/30"
 output: html_document
 ---
 
+## Random Forestで有効な交互作用を発見する
+
+[contents:]
+
+### 背景
+GLMは発想がわかりやすく解釈性も高くて良いアルゴリズム[^1]なのですが、
+線形の仮定があるため変数間の交互作用を見るのが苦手です。
+実際のプロジェクトでGLMを使った結果を見せると、
+
+ - 変数の組み合わせ効果みたいなものは見れないの？
+ - この変数は条件によって効き方が違うんだよね〜
+
+といったような指摘を受けて困った経験があったりしないでしょうか。
+そんな時に使えるテクニックを同僚から教えてもらったので、備忘がてらメモしておきます。
+勝手に公開して怒られる可能性もありますが。。。
+
+[^1]:余談ですがGLMをアルゴリズムと呼ぶのは少し抵抗があります
+
+
+### 概要
+手法の概要ですが、話としてはシンプルで
+「もしも有効な変数の組み合わせが存在しているのであれば、
+Random Forestの各決定木において、ノードの分割に使われる変数の順番として
+出現しやすいペアがあるのではないか」ということです。
+例えば変数X1とX2の間に交互作用があれば、決定木においてX1が選択された場合に続く分割ではX2が選択されやすくなるのではないでしょうか。
+
+
+### 実装
+上記のアイディアを実現するために、以下のように実装してみます：
+
+ 1. Random Forestでモデルを作る
+ 2. 各決定木から分割に用いられた変数ペアを得る
+ 3. 出現回数のカウントを取る
+ 4. 交互作用効果を確かめてみる
+
+#### 1. Random Forestでモデルを作る
+まずはRandom Forestでモデルを作ります。 `randomForest`パッケージを使ってサクッと作りましょう。
+
 ```{r}
+### libraryの読み込み
 library(randomForest)
+library(tidyverse)
 ```
 
+データには前回記事と同じ`Telco Customer Churn`を使いますが、前回の反省を踏まえて`read.csv`を使います。
 ```{r}
-getS3method("randomForest", "default")
+d <- read.csv("./Data/WA_Fn-UseC_-Telco-Customer-Churn.csv") %>% as_data_frame()
 ```
 
+本当ならここから一つ一つの変数を観察するところですが、今回はそれが目的ではないので欠損だけ埋めておきます。
 
+```{r}
+colSums(apply(d, c(1, 2), is.na))
+```
+
+`TotalCharges`に欠損があるようですね。
+
+```{r}
+summary(d$TotalCharges)
+```
+
+MedianとMeanに差があるので分布が偏っていそうです。ひとまず`NA`はMedianで埋めておきましょう。
+
+```{r}
+d2 <- 
+   d %>% 
+   mutate(TotalCharges = if_else(is.na(.$TotalCharges),
+                                 median(.$TotalCharges, na.rm = T),
+                                 .$TotalCharges))
+```
+
+`customerID`は変数として使えないので除外しましょう。また`randomForest`はカテゴリ数が
+53より多い変数を扱えないので、カテゴリ数をチェックしておきます。
+
+```{r}
+cat_vars <- sapply(d2, is.factor)
+apply(d2[, cat_vars], 2, function(x) length(unique(x)))
+```
+
+大丈夫そうですね。`customerID`だけ落としておきます。
 
 
 ```{r}
-set.seed(789)
-result <- randomForest(Species ~ ., iris, ntree = 10, max.depth = 3)
+d3 <- 
+   d2 %>% 
+   select(-customerID)
+```
+
+`randomForest`を当てはめます。目的変数は`Churn`です。
+
+```{r}
+set.seed(123)
+result <- randomForest(Churn ~ ., d3, ntree = 10)
 result
 ```
+
+精度とかは気にしません。
+
+#### 2. 各決定木から分割に用いられた変数ペアを得る
+
+
+
+
+
 
 
 ```{r}
@@ -35,7 +123,7 @@ tree_func <- function(final_model, tree_num) {
                                  k = tree_num, 
                                  labelVar = TRUE) %>% 
       tibble::rownames_to_column() %>%
-      mutate(`split point` = ifelse(is.na(prediction), `split point`, NA))
+      mutate(`split point`= ifelse(is.na(prediction),`split point`, NA))
       
   
    # prepare data frame
@@ -49,13 +137,13 @@ tree_tbl <- getTree(result, 1, labelVar = TRUE) %>% # labelVar = Fだとエラ�
    tibble::rownames_to_column() %>%
    mutate(
       rowname = as.integer(rowname)
-      # `split point` = ifelse(is.na(prediction), `split point`, NA),
+      #`split point`= ifelse(is.na(prediction),`split point`, NA),
    )
 
 var_name <- 
    tree_tbl %>% 
    select(rowname, "split var") %>% 
-   rename(split_var = `split var`) %>% 
+   rename(split_var =`split var`) %>% 
    unique() %>% 
    filter(!is.na(.$split_var))
 
@@ -70,6 +158,17 @@ data.frame(
    rename(from_var = split_var.x, to_var = split_var.y) %>% 
    na.omit(.)
 ```
+
+
+
+
+
+#### 3. 出現回数のカウントを取る
+
+#### 4. 交互作用効果を確かめてみる
+
+
+### 終わりに
 
 
 
