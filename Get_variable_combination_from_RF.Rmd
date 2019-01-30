@@ -1,0 +1,82 @@
+---
+title: "RF + Arule"
+author: "ynakahashi"
+date: "2019/1/30"
+output: html_document
+---
+
+```{r}
+library(randomForest)
+```
+
+```{r}
+getS3method("randomForest", "default")
+```
+
+
+
+
+```{r}
+set.seed(789)
+result <- randomForest(Species ~ ., iris, ntree = 10, max.depth = 3)
+result
+```
+
+
+```{r}
+getTree(result, 1)
+```
+
+```{r}
+tree_func <- function(final_model, tree_num) {
+  
+   # get tree by index
+   tree <- randomForest::getTree(final_model, 
+                                 k = tree_num, 
+                                 labelVar = TRUE) %>% 
+      tibble::rownames_to_column() %>%
+      mutate(`split point` = ifelse(is.na(prediction), `split point`, NA))
+      
+  
+   # prepare data frame
+   d <- data.frame(from = rep(tree$rowname, 2),
+                            to = c(tree$`left daughter`, tree$`right daughter`))
+  
+}
+
+library(tidyverse)
+tree_tbl <- getTree(result, 1, labelVar = TRUE) %>% # labelVar = Fだとエラー
+   tibble::rownames_to_column() %>%
+   mutate(
+      rowname = as.integer(rowname)
+      # `split point` = ifelse(is.na(prediction), `split point`, NA),
+   )
+
+var_name <- 
+   tree_tbl %>% 
+   select(rowname, "split var") %>% 
+   rename(split_var = `split var`) %>% 
+   unique() %>% 
+   filter(!is.na(.$split_var))
+
+
+data.frame(
+   from = as.integer(rep(tree_tbl$rowname, 2)),
+   to = as.integer(c(tree_tbl$`left daughter`, tree_tbl$`right daughter`))) %>% 
+   filter(to != 0) %>% 
+   left_join(var_name, by = c("from" = "rowname")) %>% 
+   left_join(var_name, by = c("to" = "rowname")) %>% 
+   select(split_var.x, split_var.y) %>% 
+   rename(from_var = split_var.x, to_var = split_var.y) %>% 
+   na.omit(.)
+```
+
+
+
+
+
+
+
+
+
+
