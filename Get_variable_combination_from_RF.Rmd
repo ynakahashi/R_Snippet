@@ -5,43 +5,35 @@ date: "2019/1/30"
 output: html_document
 ---
 
-## Random Forestで有効な交互作用を発見する
+## Random Forestで有効な交互作用を発見したい
 
 [contents:]
 
 ### 背景
-GLMは発想がわかりやすく解釈性も高くて良いアルゴリズム[^1]なのですが、
-線形の仮定があるため変数間の交互作用を見るのが苦手です。
-実際のプロジェクトでGLMを使った結果を見せると、
+GLMは発想がわかりやすく解釈性も高くて良いアルゴリズム[^1]なのですが、線形の仮定があるため変数間の交互作用を見るのが苦手です。実際のプロジェクトでGLMを使った結果を見せ、
 
  - 変数の組み合わせ効果みたいなものは見れないの？
  - この変数は条件によって効き方が違うんだよね〜
 
-といったような指摘を受けて困った経験があったりしないでしょうか。
-そんな時に使えるテクニックを同僚から教えてもらったので、備忘がてらメモしておきます。
-勝手に公開して怒られる可能性もありますが。。。
+みたいな指摘を受けて困った経験があったりしないでしょうか。そんな時に使えるテクニックを同僚から教えてもらったので、備忘がてらメモしておきます。勝手に公開して怒られる可能性もありますが。。。
 
 [^1]:余談ですがGLMをアルゴリズムと呼ぶのは少し抵抗があります
 
 
 ### 概要
-手法の概要ですが、話としてはシンプルで
-「もしも有効な変数の組み合わせが存在しているのであれば、
-Random Forestの各決定木において、ノードの分割に使われる変数の順番として
-出現しやすいペアがあるのではないか」ということです。
-例えば変数X1とX2の間に交互作用があれば、決定木においてX1が選択された場合に続く分割ではX2が選択されやすくなるのではないでしょうか。
+手法の概要ですが、話としてはシンプルで「*もしも有効な変数の組み合わせ（交互作用）が存在しているのであれば、Random Forestの各決定木において、ノードの分岐に使われる変数の順番として出現しやすいペアがあるのではないか*」ということです。例えば変数X1とX2の間に交互作用があれば、決定木においてX1が選択された場合、続く分岐ではX2が選択されやすくなるのではないでしょうか。
 
 
 ### 実装
 上記のアイディアを実現するために、以下のように実装してみます：
 
  1. Random Forestでモデルを作る
- 2. 各決定木から分割に用いられた変数ペアを得る
+ 2. 各決定木から分岐に用いられた変数ペアを得る
  3. 出現回数のカウントを取る
  4. 交互作用効果を確かめてみる
 
 #### 1. Random Forestでモデルを作る
-まずはRandom Forestでモデルを作ります。 `randomForest`パッケージを使ってサクッと作りましょう。
+まずはRandom Forestでモデルを作ります。`randomForest`パッケージを使ってサクッと作りましょう。
 
 ```{r}
 ### libraryの読み込み
@@ -50,11 +42,14 @@ library(tidyverse)
 ```
 
 データには前回記事と同じ`Telco Customer Churn`を使いますが、前回の反省を踏まえて`read.csv`を使います。
+
+前回の記事はこちら。
+
 ```{r}
 d <- read.csv("./Data/WA_Fn-UseC_-Telco-Customer-Churn.csv") %>% as_data_frame()
 ```
 
-本当ならここから一つ一つの変数を観察するところですが、今回はそれが目的ではないので欠損だけ埋めておきます。
+本来ならここから一つ一つの変数を観察するところですが、今回はそれが目的ではないので欠損だけ埋めておきます。
 
 ```{r}
 colSums(apply(d, c(1, 2), is.na))
@@ -76,8 +71,7 @@ d2 <-
                                  .$TotalCharges))
 ```
 
-`customerID`は変数として使えないので除外しましょう。また`randomForest`はカテゴリ数が
-53より多い変数を扱えないので、カテゴリ数をチェックしておきます。
+`customerID`は変数として使えないので除外しましょう。また`randomForest`はカテゴリ数が53より多い変数を扱えないので、カテゴリ数をチェックしておきます。
 
 ```{r}
 cat_vars <- sapply(d2, is.factor)
@@ -97,70 +91,139 @@ d3 <-
 
 ```{r}
 set.seed(123)
-result <- randomForest(Churn ~ ., d3, ntree = 10)
+result <- randomForest(Churn ~ ., d3, ntree = 500)
 result
 ```
 
 精度とかは気にしません。
 
-#### 2. 各決定木から分割に用いられた変数ペアを得る
+#### 2. 各決定木から分岐に用いられた変数ペアを得る
 
+次にRandom Forestから変数ペアを取得します。そのためにはRandom Forestの各決定木について、どの変数がどの順番で分岐に用いられたかを知る必要があります。
 
+まずはRandom Forestから各決定木の結果を取ってきましょう。 `getTree` 関数を使います。過去記事も参考にしてください。
 
-
-
-
+ここで過去記事
 
 ```{r}
-getTree(result, 1)
+getTree(result, 1, labelVar = TRUE)
 ```
 
+`getTree` は分岐に用いられた変数とその分岐先ノードなどを返します。ここで必要なのは1~3列目なのですが、それぞれ「左の子ノード」「右の子ノード」「分岐に用いられた変数」を意味しています。例えば1行目を見るとノードの分岐に `Contract` が用いられたことがわかります。
+
+このテーブルに行インデックスを列として追加しましょう。なおこれ以降のコードは[こちら](https://shiring.github.io/machine_learning/2017/03/16/rf_plot_ggraph)の記事を参考にさせて頂きました。
+
 ```{r}
-tree_func <- function(final_model, tree_num) {
-  
-   # get tree by index
-   tree <- randomForest::getTree(final_model, 
-                                 k = tree_num, 
-                                 labelVar = TRUE) %>% 
-      tibble::rownames_to_column() %>%
-      mutate(`split point`= ifelse(is.na(prediction),`split point`, NA))
-      
-  
-   # prepare data frame
-   d <- data.frame(from = rep(tree$rowname, 2),
-                            to = c(tree$`left daughter`, tree$`right daughter`))
-  
-}
-
-library(tidyverse)
 tree_tbl <- getTree(result, 1, labelVar = TRUE) %>% # labelVar = Fだとエラー
-   tibble::rownames_to_column() %>%
-   mutate(
-      rowname = as.integer(rowname)
-      #`split point`= ifelse(is.na(prediction),`split point`, NA),
-   )
+   rownames_to_column() %>%
+   mutate(rowname = as.integer(rowname))
+```
 
+作成した `tree_tbl` は分岐に用いた変数（ `split var` ）はわかりますが、このままでは変数のペアはわかりません。例えば1行目の `Contract` で分岐された子ノード（2と3）は、次にそれぞれが `OnlineBackup` と `TechSupport`  で分岐されています（2行目、3行目）ので、 `Contract - OnlineBackup` と `Contract - TechSupport` という変数ペアが出現したことがわかるような形に整形したいですね。
+
+各行には「分岐に用いた変数」と「分岐先の子ノードの番号」がありますので、「分岐先の子ノード（左右両方）」に「分岐**元**の変数」を追加すれば欲しいものが得られそうです。
+
+まずはノードと変数のマスタを用意しましょう。
+
+```{r}
 var_name <- 
    tree_tbl %>% 
    select(rowname, "split var") %>% 
-   rename(split_var =`split var`) %>% 
+   rename(split_var =`split var`) %>% # スペースを`_`に修正
    unique() %>% 
    filter(!is.na(.$split_var))
-
-
-data.frame(
-   from = as.integer(rep(tree_tbl$rowname, 2)),
-   to = as.integer(c(tree_tbl$`left daughter`, tree_tbl$`right daughter`))) %>% 
-   filter(to != 0) %>% 
-   left_join(var_name, by = c("from" = "rowname")) %>% 
-   left_join(var_name, by = c("to" = "rowname")) %>% 
-   select(split_var.x, split_var.y) %>% 
-   rename(from_var = split_var.x, to_var = split_var.y) %>% 
-   na.omit(.)
 ```
 
+続けて `left daughter` と `right daughter` それぞれに `rowname` でJOINします。
 
+```{r}
+tree_tbl %>% 
+   left_join(var_name, by = c("left daughter" = "rowname")) %>% 
+   left_join(var_name, by = c("right daughter" = "rowname")) %>% 
+   select(rowname, `split var`, `split_var.x`, `split_var.y`) %>% 
+   na.omit()
+```
 
+良さそうですね。ただしこのままでは後の工程で使いにくいのでもう少し加工します。
+
+```{r}
+tree_tbl %>% 
+   left_join(var_name, by = c("left daughter" = "rowname")) %>% 
+   left_join(var_name, by = c("right daughter" = "rowname")) %>% 
+   select(`split var`, `split_var.x`, `split_var.y`) %>% 
+   na.omit() %>% 
+   rename(from_var = `split var`, 
+          left = `split_var.x`, 
+          right = `split_var.y`) %>% 
+   gather(key = node, value = to_var, -from_var) %>% 
+   select(-node)
+```
+
+これで必要なアウトプットが得られました。あとは上記の加工を関数化しておき、各決定木に当てはめれば良さそうです。
+
+```{r}
+get_var_pairs <- function(tree_num, rf = result) {
+   
+   # 決定木の結果を得る
+   tree_tbl <- getTree(rf, tree_num, labelVar = TRUE) %>%
+      rownames_to_column() %>%
+      mutate(rowname = as.integer(rowname))
+  
+   var_name <- 
+      tree_tbl %>% 
+      select(rowname, "split var") %>% 
+      rename(split_var =`split var`) %>% # スペースを`_`に修正
+      unique() %>% 
+      filter(!is.na(.$split_var))
+
+   out <- 
+      tree_tbl %>% 
+      left_join(var_name, by = c("left daughter" = "rowname")) %>% 
+      left_join(var_name, by = c("right daughter" = "rowname")) %>% 
+      select(`split var`, `split_var.x`, `split_var.y`) %>% 
+      na.omit() %>% 
+      rename(from_var = `split var`, 
+             left = `split_var.x`, 
+             right = `split_var.y`) %>% 
+      gather(key = node, value = to_var, -from_var) %>% 
+      select(-node)
+   
+   return(out)
+}
+```
+
+試してみましょう。
+
+```{r}
+get_var_pairs(5, result)
+```
+
+これを全ての決定木に当てはめます。 `purrr` の `map_dfr` を使ってみましょう。
+
+```{r}
+var_pairs <- map_dfr(as.matrix(1:5), get_var_pairs, result) # 少しだけ実行
+dim(var_pairs)
+head(var_pairs)
+```
+
+素直に `for` で書いた時と同じ結果になっていますでしょうか？
+
+```{r}
+tmp <- c()
+for (i in 1:5) {
+   tmp <- bind_rows(tmp, get_var_pairs(i, result))
+}
+dim(tmp)
+head(tmp)
+```
+
+合っているようなので全ての結果を取得します。 `randomForest` では作成する決定木の数を `ntree` で指定するので `1:ntree` で全ての決定木に適用できるのですが、直接 `ntree` を取ってくることは出来ないようなので `length(treesize())` を使います。エラーは気にしないことにします。
+
+```{r}
+var_pairs <- map_dfr(as.matrix(1:length(treesize(result))), get_var_pairs, result)
+```
+
+30万弱の変数ペアが得られました。
 
 
 #### 3. 出現回数のカウントを取る
