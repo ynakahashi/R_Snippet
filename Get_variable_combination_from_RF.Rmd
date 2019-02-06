@@ -228,17 +228,147 @@ var_pairs <- map_dfr(as.matrix(1:length(treesize(result))), get_var_pairs, resul
 
 #### 3. 出現回数のカウントを取る
 
+さっそく変数ペアのカウントを取ってみましょう。
+
+```{r}
+var_pairs %>% 
+   group_by(from_var) %>%
+   # group_by(from_var, to_var) %>% 
+   summarise(cnt = n()) %>% 
+   arrange(desc(cnt))
+```
+
+分岐の始点となった変数（分岐元）の数は19ですが、分析対象のデータセットには目的変数を含んで20列だったので、分岐元とならない変数はなかったようです。一方で分岐元としての出現頻度には大きなばらつきがあり、 `TotalCharges` 、 `MonthlyCharges` 、 `tenure` が選ばれやすいようですね。
+
+ちなみに `varImpPlot` で変数重要度を見てみると、これらはいずれも上位に付けており、4位以下と大きな隔たりがあるようです。
+
+```{r}
+varImpPlot(result)
+```
+
+
+続いて分岐の終点となった変数（分岐先）についても見てみましょう。
+
+```{r}
+var_pairs %>% 
+   group_by(to_var) %>%
+   # group_by(from_var, to_var) %>% 
+   summarise(cnt = n()) %>% 
+   arrange(desc(cnt))
+```
+
+同じく19変数ありますので、全ての変数は分岐元・分岐先ともに出現しています。分岐元と同じく出現頻度はばらつきがあります。出現しやすい変数としては、 `TotalCharges` 、 `MonthlyCharges` 、 `tenure` となっています。これは少し意外ですね。てっきり分岐元に選ばれやすい変数と分岐先に選ばれやすい変数は違うものになると思っていましたが。
+
+せっかくなので分岐元と分岐先で選ばれやすさが異なるか、可視化してみましょう。
+
+```{r}
+plt <- 
+   var_pairs %>% 
+   group_by(from_var) %>%
+   summarise(cnt_f = n()) %>% 
+   left_join(var_pairs %>% group_by(to_var) %>% summarise(cnt_t = n()),
+             by = c("from_var" = "to_var")) %>%
+   gather(var_type, cnt, -from_var) %>% 
+   rename(var = from_var)
+
+ggplot(plt, aes(x = reorder(var, -cnt), y = cnt, fill = var_type)) +
+   geom_bar(stat = "identity", position = "dodge") +
+   # scale_color_brewer(palette = "Set2") +
+   # facet_wrap(~var_type, nrow = 2) +
+   theme_classic() +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+   NULL
+```
+
+上位3変数は分岐元として選ばれやすいですが、分岐先としては更に頻度が多くなっています。また変数間の順位にはほとんど変動はないようですね。
+
+組み合わせでも見てみましょう。
+
+```{r}
+var_pairs %>% 
+   group_by(from_var, to_var) %>%
+   summarise(cnt = n()) %>% 
+   arrange(desc(cnt))
+```
+
+上位10件の組み合わせを見ると、9行目の `PaymentMethod` を除いていずれも上位3変数の組み合わせになっています。同じ変数のペアも出てきているので、レンジを絞る形で分岐条件として選ばれているようですね、なるほど。なお19 * 19 = 361なので発生していない組み合わせがあるようですが、一部ですね。
+
 #### 4. 交互作用効果を確かめてみる
+
+ひとまず目的としていた分析は以上となります。今回のデータセットおよび分析条件を用いた場合、 `TotalCharges` 、 `MonthlyCharges` 、 `tenure` の3変数が（組み合わせの意味でも、重要度の意味でも）影響の大きい変数であるようです。したがって冒頭のようなクライアントからの指摘があった場合には、特にこの3変数を中心に他の変数との交互作用を確認していくと良いのではないでしょうか。
+
+ここまで書いたところで一つ疑問が浮かんできました。このような組み合わせ効果は、GLMでも発見できないでしょうか？例えば二次の交互作用項を準備しておき、 `lasso` で変数選択させるとこれらの組み合わせが残らないでしょうか？
+
+やってみましょう。yとxを用意します。
+
+```{r}
+library(glmnet)
+y <- as.matrix(ifelse(d3$Churn == "Yes", 1, 0))
+tmp <- scale(model.matrix(Churn ~ .^2 , d3))
+x_vars <- which(colSums(apply(tmp, c(1,2), is.nan)) == 0)
+x <- cbind(1, tmp[, x_vars])
+dim(x)
+```
+
+`lasso` は回帰係数の絶対値に対して罰則が与えられるため、説明変数のスケールを揃えておく必要があります。そのため `model.matrix` でダミー化したあと `scale` で正規化しています。またその際に分散が0であるために `NaN` となってしまう変数は除外しています。
+
+このデータで `lasso` にかけてみましょう。まずは適切な `lambda` を得るために `cv.glmnet` を使いますが、計算時間が少しかかるため `nfolds` は5にしておきましょう。
+
+```{r}
+res_lasso_cv <- cv.glmnet(x = x, y = y, family = "binomial", alpha = 1, nfolds = 5)
+res_lasso_cv$lambda.min
+```
+
+このときにDevianceが最小となる `lambda` は0.004130735のようです。プロットも見ておきましょう。
+
+```{r}
+plot(res_lasso_cv)
+```
+
+ここで縦に引かれた二本の破線はそれぞれ `lambda.min` および `lambda.1se` を表しています。 `lambda.1se` は `lambda.min` の1SD以内で最も罰則を与えたときの `lambda` を示すようですね。詳しくは以下を参照してください。
+
+https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html
+
+ひとまず `lambda.min` を与えたときの結果を確認しましょう。
+
+```{r}
+res_lasso <- glmnet(x = x, y = y, family = "binomial", alpha = 1,
+                    lambda = res_lasso_cv$lambda.min)
+
+# このときの回帰係数の絶対値
+as.data.frame(as.matrix(res_lasso$beta)) %>% 
+   rownames_to_column() %>% 
+   filter(s0 != 0) %>% 
+   mutate(abs_beta = abs(s0)) %>% 
+   arrange(desc(abs_beta)) %>% 
+   select(rowname, abs_beta, s0)
+```
+
+むむ。。 `lasso` においても `tenure` は影響の大きい（回帰係数の絶対値が大きい）変数として選ばれましたが、 `TotalCharges` と `MonthlyCharges` はいませんね。
+
+っていうか、
+
+
+```{r}
+as.data.frame(as.matrix(res_lasso$beta)) %>% 
+   rownames_to_column() %>% 
+   filter(rowname %in% c("TotalCharges", "MonthlyCharges"))
+```
+
+`lasso` で落とされてますね。。。
+`TotalCharges` がどのような影響を示すのか `partialPlot` で見てみましょう。
+
+```{r}
+partialPlot(result, as.data.frame(d3), "TotalCharges") # tibbleだとエラーになる
+```
+
+グニャグニャですね。特定のレンジでは影響が大きいものの、他ではそうでもないということなんでしょうか。だからRandom Forestのような非線形のアルゴリズムだと効果が認められる一方、 `lasso` のような線形のアルゴリズムでは拾いきれないのかもしれません[^2]。これは素直に、Random Forestの結果から効果のありそうな組み合わせ変数を見つけ、分布を見ながら組み込んだ方が良さそうです。
+しかしy軸が1を超えるのはなぜなんでしょうか。。。
+
+[^2]:もちろん加法モデルのようにxに非線形な変換を施すことで捉えにいく方法もあるでしょうけども
 
 
 ### 終わりに
 
-
-
-
-
-
-
-
-
+今回の分析はRandom Forestの結果から交互作用の良い候補を見つけようという趣旨でした。また同様の結果が `lasso` からも得られるかを検証しましたが、両者の結果は異なるものとなりました。Random Forestは非線形な効果を捉えることができるアルゴリズムなのでこちらの結果から有効な変数ペアを絞り込み、一つずつ検証していくスタイルが良さそうです。
 
