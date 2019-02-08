@@ -1,0 +1,117 @@
+---
+title: "inTrees"
+author: "ynakahashi"
+date: "2019/2/8"
+output: html_document
+---
+
+## 
+
+### 背景
+前回こんな記事を書いたのですが、
+
+ここで前回の記事
+
+その後、知人から「こんなのあるよ」と教えてもらいました。
+
+InTrees
+
+・・・
+・・・・・・
+・・・・・・・・・
+
+すでに実装されていたんですね。。。検索が足りなかったようです。
+
+聞いたときは面白いアイディアだと思ったんですが、結構みんな考えてることだったんですね。少しがっかり。。。
+でもまぁ、冷静に考えればそりゃありますよね。。。
+
+### 概要
+
+
+
+
+```{r}
+install.packages("inTrees")
+```
+
+
+```{r}
+library(tidyverse)
+library(randomForest)
+library(inTrees)
+```
+
+
+```{r}
+# d <- read.csv("./Data/WA_Fn-UseC_-Telco-Customer-Churn.csv") %>% as_data_frame()
+# d2 <- 
+#    d %>% 
+#    mutate(TotalCharges = if_else(is.na(.$TotalCharges),
+#                                  median(.$TotalCharges, na.rm = T),
+#                                  .$TotalCharges))
+# d3 <- 
+#    d2 %>% 
+#    select(-customerID)
+
+d3 <- iris
+
+set.seed(123)
+# result <- randomForest(Churn ~ ., d3, ntree = 50)
+result <- randomForest(Species ~ ., d3, ntree = 50)
+result
+```
+
+
+
+http://kato-kohaku-0.hatenablog.com/entry/2016/05/01/155908
+
+```{r}
+tree_list <- RF2List(result)
+```
+
+```{r}
+nt <- length(treesize(result))
+x <- d3[, -ncol(d3)]
+y <- d3[, ncol(d3)]
+ex_rules <- extractRules(tree_list, x, ntree = nt)
+```
+
+
+```{r}
+rule_met <- getRuleMetric(ex_rules, x, y)
+```
+
+
+
+```{r}
+rule_met_prn <- pruneRule(rule_met, x, y)
+```
+
+
+```{r}
+rule_met_sel <- selectRuleRRF(rule_met_prn, x, y)
+```
+
+```{r}
+lrn <- buildLearner(rule_met_sel, x, y, minFreq = 0.001)
+```
+
+
+```{r}
+rules <- presentRules(rule_met_sel, colnames(x))
+```
+
+
+```{r}
+freq_ptn <- getFreqPattern(rules)
+```
+
+
+```{r}
+applyLearner(lrn, x)
+```
+
+```{r}
+table(iris$Species, applyLearner(lrn ,x))
+```
+
