@@ -1,0 +1,158 @@
+---
+title: "Find Best Split"
+author: "ynakahashi"
+date: "2019/2/13"
+output: html_document
+---
+
+## FindBestSplitを書いてみる
+
+### 背景
+前回、前々回の記事で`Random Forest`を使ってみたのですが、ソースコードを読んでいるとノードの分割において`findbestsplit`というサブルーチンが使われていることに気が付きました。このサブルーチン自体は[こちら](https://github.com/cran/randomForest/blob/master/src/rfsub.f)のL191に定義されているのでそれを読めばわかる（はずな）のですが、もう少しわかりやすい説明はないかなーと探してみたところ、こんな解説記事を見つけました。
+
+http://dni-institute.in/blogs/cart-algorithm-for-decision-tree/
+
+これによると、どうやら`findbestsplit`は
+
+1. 閾値（Cut off points）を決める
+2. 各閾値におけるGini係数を求める
+3. 現時点のGini係数とのギャップが最大となる閾値を探す
+
+というステップによって最良の閾値を探しているようです。それほど難しくなさそうなので、これをRで書いてみましょう。
+
+### 実装
+`findbestsplit`を実装するためには、以下のような関数が必要となりそうです。
+
+1. データ、説明変数を与えると閾値の候補を返す（return_threshold_values）
+1. データ、目的変数、説明変数、閾値を与えるとGini係数を返す（return_gini_index）
+1. 現在のGini係数との差分が最大となる（最良な）閾値を返す（return_best_value）
+
+まずは１つ目から書いてみましょう。
+
+#### 1. データ、説明変数を与えると閾値の候補を返す関数
+先ほど紹介したページでは閾値の候補を生成するための方法として
+
+> One of the common approach is to find splits /cut off point is to take middle values
+
+との説明がありましたので、これに倣います。以下のように書いてみました：
+
+1. 説明変数列を`unique`する
+1. `sort`で並び替える
+1. 各要素について1つ前の値との差分（`diff`）を取る
+1. 差分を2で割る
+1. `sort`後の列（最初の要素は除く）に加える
+
+
+```{r}
+return_threshold_values <- function(dat, col) {
+   
+   uniq_vals <- sort(unique(dat[, col]))
+   diffs <- diff(uniq_vals) / 2
+   thre_vals <- uniq_vals[-1] - diffs
+
+   return(thre_vals)
+
+}
+```
+
+#### 2. データ、目的変数、説明変数、閾値を与えるとGini係数を返す関数
+続いてGini係数を求める関数を定義します。ここでは引数として閾値も与え、`apply`で閾値候補をまとめて並列に処理することを考えました。Gini係数の求め方は[ここ](http://dni-institute.in/blogs/gini-index-work-out-example/)を参考に、以下のように書きました：
+
+1. 説明変数を閾値で1/0のカテゴリに振り分ける
+1. 全体および各カテゴリのサンプルサイズを求める
+1. 目的変数 × 説明変数による混同行列の各要素の割合（の二乗）を計算する
+1. Gini係数を求める
+
+
+```{r}
+# データ、目的変数、説明変数、閾値を与えるとGini係数を返す
+return_gini_index <- function(dat, target, col, val) {
+   
+   # if(val < min(dat[, col]) | val > max(dat[, col])) {
+   #    stop("val should have a value between min & max of col")
+   # }
+   
+   d <- dat[, c(target, col)]
+   d$cat <- ifelse(d[, col] > val, 1, 0)
+   n0 <- nrow(d)
+   n1 <- sum(d$cat)
+   n2 <- n0 - n1
+   p11 <- (nrow(d[d$cat == 1 & d$target == 1, ]) / n1)^2
+   p12 <- (nrow(d[d$cat == 1 & d$target == 0, ]) / n1)^2
+   p21 <- (nrow(d[d$cat == 0 & d$target == 1, ]) / n2)^2
+   p22 <- (nrow(d[d$cat == 0 & d$target == 0, ]) / n2)^2
+   gini_val <- (n1/n0) * (1 - (p11 + p12)) + (n2/n0) * (1 - (p21 + p22))
+   
+   return(gini_val)
+}
+```
+
+#### 3. 現在のGini係数との差分が最大となる（最良な）閾値を返す関数
+上記の処理によってある閾値におけるGini係数を求めることが出来ましたので、これを`apply`で並列化します。また実際のところ必要な値はGini係数そのものではなく、現時点におけるGini係数との差分なので、それも計算しましょう。これまでに定義した関数を使って以下のように書きます：
+
+1. 閾値候補のベクトルを`list`にする
+1. 閾値候補リストを`return_gini_index`に`sapply`で渡す
+1. 現時点のGini係数を計算する
+1. 差分の最大値、Gini係数の最小値を得る
+1. 差分が最大となる閾値を得る
+1. 変数名を合わせて返す
+
+差分の最大値やGini係数の最小値は別に必要ないのですが、参考のために取っておきます。
+
+```{r}
+return_best_val <- function(dat, target, col) {
+   
+   thre_vals <- as.list(return_threshold_values(dat, col))
+   gini_vals <- sapply(thre_vals, return_gini_index, dat = dat, target = target, col = col)
+   
+   p1 <- sum(dat$target) / nrow(dat)
+   p2 <- 1 - p1
+   current_gini <- 1 - ((p1)^2 + (p2)^2)
+   
+   max_gap <- max(current_gini - gini_vals)
+   min_gini <- min(gini_vals)
+   max_thre_val <- thre_vals[[which(max_gap == current_gini - gini_vals)]]
+   return(c(col, max_thre_val, round(max_gap, 2), round(min_gini, 2)))
+   
+}
+```
+
+では、このようにして定義した関数を実際に当てはめまめてみます。`iris`を使って適当に以下のようなデータを用意します。
+
+```{r}
+my_iris <- iris
+my_iris$target <- ifelse(my_iris$Species == "setosa", 1, 0)
+dat <- my_iris[, -5]
+```
+
+まずは`Sepal.Length`の最良な閾値を取得してみます。
+
+```{r}
+return_best_val(dat, "target", "Sepal.Length")
+```
+
+これが合っているのかはわかりませんが、続いて全部の変数に同時に当てはめてみましょう。`lapply`と`do.call`を使います。
+
+```{r}
+do.call("rbind", 
+        lapply(as.list(colnames(dat)[1:4]), return_best_val, dat = dat, target = "target"))
+```
+
+各変数について最良な閾値を取得することが出来たようです。4列目（Gini係数の最小値）を確認すると、`Petal.Length`と`Petal.Width`で0になっていますが、Gini係数が0ということは完全に分離されていることを意味します。確かめてみましょう。
+
+
+```{r}
+plot(dat$Petal.Length, col = dat$target + 1)
+abline(h = 2.45)
+plot(dat$Petal.Width, col = dat$target + 1)
+abline(h = 0.8)
+```
+
+
+確かに完全に分離しているようです。
+
+
+### 終わりに
+今回は`randomForest`の中でも使われている`findbestsplit`というアルゴリズムをRで書いてみました。実際には決定木やRandom Forestは一連の処理を再帰的に繰り返しているのですが、最も重要なポイントはこちらになるのだと思います。なおPythonの`DecisionTreeClassifier`でも同じようなアルゴリズムとなっているのか確認したかったのですがPythonのソースコードの表示のさせ方が良くわかりませんでした。
+
+おしまい。
