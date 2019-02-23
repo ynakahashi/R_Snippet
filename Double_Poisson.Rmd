@@ -1,0 +1,398 @@
+---
+title: "Double Poisson"
+author: "ynakahashi"
+date: "2019/2/14"
+output: html_document
+---
+
+## 過小分散なカウントデータを扱いたい
+
+### 背景
+カウントデータをモデリングしようと思ったとき、まず思い浮かべる分布といえばポアソン分布だと思います。しかしポアソン分布は期待値と分散が等しいという性質があるため、実際のデータに当てはめようとすると、（ポアソン分布から期待されるものよりも）分散が大きい（**過分散**）または小さい（**過小分散**）という問題に直面することがあります。
+
+そのようなとき、過分散ならともかく[^1]、過小分散の場合にどんな分布を当てはめれば良いのか知らなかったのですが、先日某所でダブルポアソン分布というものを教えてもらったので試してみます。
+
+[^1]:基本的には負の二項分布を当てはめますが、過分散の原因が個体差に由来すると考えられるならば混合モデルにするかもしれません
+
+### `doublepoisson`を触ってみる
+いきなりですが、ダブルポアソン分布で調べてみたところRでは`rmutil`パッケージで`doublepoisson`関数が使えるようなので早速インストールして使ってみます。
+
+```{r}
+# install.packages("rmutil")
+library(rmutil)
+```
+
+`rmutil`では、`runif`や`dnorm`などと同じようにr/d/p/qを頭に付けた`doublepois`関数が使えます。ダブルポアソン分布に従う乱数を生成してみましょう。Overdispersion parameterとして`s`が指定できるのでひとまず小さめの値にしてみます。
+
+```{r}
+set.seed(123)
+n <- 500
+m <- 5 # 平均
+s <- 2 # Overdispersion parameter
+d <- data.frame(y = rdoublepois(n, m, s))
+```
+
+```{r}
+head(d)
+```
+
+ぱっと見た感じでは通常のポアソンと変わりありません。このときの平均と分散は：
+
+```{r}
+mean(d$y)
+var(d$y)
+```
+
+でした。うーん、分散が`s`と結構違ってますが、これ合っているんですかね。ひとまず次に進めます。
+
+`rpois`と比べ分散が小さいデータを生成できているか確認してみましょう。カウントごとの頻度を描き[^2]、その上に（通常の）ポアソン分布の確率関数を引いてみます。
+
+[^2]:`hist()`で作図したプロットに上手く確率密度関数の曲線を載せられなかったので棒グラフにした
+
+```{r}
+## プロット用に最大値を得る
+max_count <- max(d$y)
+
+## 平均がmのポアソン分布における確率密度を得る
+nrm_poi <- dpois(0:max_count, m)
+
+## データの分布を得る
+dens <- table(d$y) / nrow(d)
+
+## プロット用に最大密度を得る。まるめの単位はよしなに
+max_dens <- ceiling(max(c(dens, nrm_poi)) * 20) / 20
+
+## 欠損に対応するために0からmax_countまでのベクトルを用意して値を代入する
+dens_vec <- rep(0, length(0:max_count))
+names(dens_vec) <- c(0:max_count)
+dens_vec[names(dens)] <- dens
+
+## ヒストグラムではなく棒グラフで作図するので、座標を指定する
+xleft <- -1:max_count - 0.2
+xright <- -1:max_count + 0.2
+ybottom <- rep(0, length(-1:max_count))
+ytop <- c(0, dens_vec)
+
+## 棒グラフに確率密度関数を載せる
+plot(-1:max_count, xlim = c(-1, max_count), ylim = c(0, max_dens), type = "n", 
+     xlab = "", ylab = "")
+rect(xleft = xleft, ybottom = ybottom, xright = xright, ytop = ytop, col = "gray")
+lines(c(0:max_count), nrm_poi, col = "blue")
+```
+
+通常のポアソン分布で期待される密度（青線）と比較するとダブルポアソン分布では平均値周りの密度が高くなっており、全体としてバラツキが小さくなっているようです。
+
+では`s`の値を変えるとどうなるでしょうか？簡単に変更できるように関数化しておきます。
+
+```{r}
+plot_double_poisson <- function(n, m, s) {
+   
+   d <- data.frame(y = rdoublepois(n, m, s))
+
+   max_count <- max(d$y)
+   nrm_poi <- dpois(0:max_count, m)
+   dens <- table(d$y) / nrow(d)
+   max_dens <- ceiling(max(c(dens, nrm_poi)) * 20) / 20
+   
+   dens_vec <- rep(0, length(0:max_count))
+   names(dens_vec) <- c(0:max_count)
+   dens_vec[names(dens)] <- dens
+   
+   xleft <- -1:max_count - 0.2
+   xright <- -1:max_count + 0.2
+   ybottom <- rep(0, length(-1:max_count))
+   ytop <- c(0, dens_vec)
+   
+   plot(-1:max_count, xlim = c(-1, max_count), ylim = c(0, max_dens), type = "n", 
+        xlab = "", ylab = "", main = paste0("s = ", s), cex.main = 0.7)
+   rect(xleft = xleft, ybottom = ybottom, xright = xright, ytop = ytop, col = "gray")
+   lines(c(0:max_count), nrm_poi, col = "blue")
+}
+```
+
+`s`を1, 3, 5, 10とした場合のグラフを描いてみます。
+
+```{r}
+set.seed(123)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 2))
+plot_double_poisson(500, 5, 1)
+plot_double_poisson(500, 5, 3)
+plot_double_poisson(500, 5, 5)
+plot_double_poisson(500, 5, 10)
+```
+
+
+おや？ `s`が小さい方がデータのバラツキが大きくなっていますね。`s`が10のときにはデータの半数以上が5となっているようです。また`s`が1のときにはほぼポアソン分布と一致しているように見えます。この傾向は`m`を変更しても変わらないようです。
+
+```{r}
+set.seed(123)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 2))
+plot_double_poisson(500, 10, 1)
+plot_double_poisson(500, 10, 3)
+plot_double_poisson(500, 10, 5)
+plot_double_poisson(500, 10, 10)
+```
+
+
+想像していた結果とは異なるのですが、このOverdispersion parameterを変更することでポアソン分布では扱えなかった過小分散なカウントデータに対応できそうです。
+
+
+### 切片を推定してみる
+#### `glm`を当てはめてみる
+それでは続いて、この過小分散なデータに対してGLMを当てはめたときの結果を確認してみましょう。改めてサンプルデータを作成しますが、十分に過小分散となるよう`s`は10としておきましょう。
+
+```{r}
+set.seed(123)
+n <- 500
+m <- 5
+s <- 10
+d <- data.frame(y = rdoublepois(n, m, s))
+```
+
+`glm`を使ってフィッティングしますが、ここで切片として5が推定されれば問題ありません。ここではリンク関数は`log`とします。
+
+```{r}
+res_glm <- glm(y ~ 1, d, family = poisson("log"))
+coef(res_glm)
+```
+
+切片は`1.61`と表示されていますが、逆リンク関数`exp`で戻してみると、
+
+```{r}
+exp(coef(res_glm))
+mean(d$y)
+```
+
+一致しています。過小分散であっても切片は正しく推定されるようです。しかしポアソン分布であると仮定した場合、その期待値と分散は等しい（E(Y) = Var(Y)）はずなのですが、実際の分散を見てみると：
+
+```{r}
+var(d$y)
+```
+
+大きく異なります。
+
+
+#### `dglm`を当てはめてみる
+それではこのようなデータに対してどのようにモデリングすれば良いかということなのですが、調べてみたところ`dglm`というパッケージ・関数があるようなので使ってみましょう。
+
+```{r}
+# install.packages("dglm")
+library(dglm)
+res_dglm <- dglm(y ~ 1, ~1, data = d, family = poisson("log"))
+```
+
+あらら、何らかのエラーで止まってしまいました。原因を探りたいところですが、ひとまず`s`を小さくして先に進みます。
+
+```{r}
+set.seed(123)
+n <- 500
+m <- 5
+s <- 3
+d <- data.frame(y = rdoublepois(n, m, s))
+```
+
+```{r}
+res_dglm <- dglm(y ~ 1, ~1, data = d, family = poisson("log"))
+```
+
+今度は大丈夫なようですので結果を見てみましょう。
+
+
+```{r}
+exp(res_dglm$coefficients[1])
+mean(d$y)
+```
+
+今度も`m`は推定できているようです。分散はどうでしょうか。
+
+```{r}
+exp(res_dglm$dispersion.fit$coefficients)
+var(d$y)
+```
+
+なんか、やっぱり分散は違いますね。
+
+実はここまで触れてこなかったのですが、ダブルポアソン分布についてはこちらのブログを参考にさせて頂きました：
+
+[http://statmodeling.hatenablog.com/entry/underdispersed-poisson-alternatives: cited]
+
+またこの記事ではダブルポアソン分布の分散として
+
+$$
+Var(Y) \approx \sqrt{\mu  \sigma}
+$$
+
+と紹介されていますので、もしかしたら分散は`m`との積を求める必要があるかもしれません。
+
+```{r}
+sqrt(exp(res_dglm$dispersion.fit$coefficients) * exp(res_dglm$coefficients))
+var(d$y)
+```
+
+さっきよりもだいぶ近い値が得られるようになりましたが、右辺が平方根になっているのが気になります（分散なので）。取ってみましょう。
+
+```{r}
+exp(res_dglm$dispersion.fit$coefficients) * exp(res_dglm$coefficients)
+var(d$y)
+```
+
+だいぶ近い！
+
+
+### 回帰係数を推定してみる
+#### `glm`、`dglm`で推定してみる
+なかなか良さそうな感触が得られたので、切片だけでなく回帰係数も推定してみましょう。以下のようにサンプルデータを作成します。`s`は3としました。
+
+```{r}
+set.seed(123)
+n <- 500
+b <- 1.5
+x <- runif(n, 3, 5)
+m <- b * x
+s <- 3
+y <- rdoublepois(n, m, s)
+d <- data.frame(y, x)
+```
+
+平均`m`を与えたときのダブルポアソン分布を見てみましょう。
+
+```{r}
+hist(d$y, col = "gray", ylim = c(0, 0.5), probability = T, main = "", xlab = "", breaks = "scott")
+```
+
+また平均と分散を確認すると：
+
+```{r}
+mean(d$y)
+var(d$y)
+```
+
+このようになりました。
+
+それぞれのデータを、`glm`と`dglm`それぞれでフィッティングしてみます。まずは`glm`から。
+
+
+```{r}
+res_glm <- glm(y ~ x, d, family = poisson("log"))
+exp(coef(res_glm))
+```
+
+回帰係数は真の値(1.5)にまぁまぁ近いものが推定されています。続いて`dglm`でフィッティングすると：
+
+```{r}
+res_dglm <- dglm(y ~ x, ~1, data = d, family = poisson("log"))
+exp(res_dglm$coefficients)
+```
+
+`glm`と同じ結果が得られました。
+
+では分散を見てみましょう。`m`には`d$x`の平均値を用いることにします。
+
+```{r}
+m_hat <- exp(res_dglm$coefficients %*% c(1, mean(d$x)))
+m_hat
+mean(m)
+```
+
+```{r}
+res_dglm$dispersion.fit$coefficients
+exp(res_dglm$dispersion.fit$coefficients) * m_hat
+```
+
+うーん、合いません（真の値は3）。。。
+
+ちなみにこのデータを`lm`でフィッティングするとどうなるかと言うと：
+
+```{r}
+res_lm <- lm(y ~ x, d)
+var(res_lm$residuals)
+```
+
+あまり変わりませんね。
+
+
+### `optim`で推定してみる
+
+もう少しチャレンジしてみましょう。`dglm`の代わりに`optim`で推定してみます。目的関数を以下のように定義します：
+
+```{r}
+my_obj_fun <- function(b) {
+   b1 <- b[1]
+   b2 <- b[2]
+   b3 <- b[3]
+   ret <- sum(ddoublepois(d$y, exp(b1 + d$x * b2), b3, log = TRUE))
+   ret
+}
+```
+
+パラメータのベクトルを適当に用意して、`optim`にかけてみましょう。
+
+```{r}
+b <- c(0, 1, 3)
+res_opt <- optim(b, my_obj_fun, control = list(fnscale = -1))
+```
+
+結果を確認します：
+
+```{r}
+exp(res_opt$par)[-3] # 回帰係数
+res_opt$par[3] # 分散
+```
+
+回帰係数は`glm`、`dglm`の結果と大体一致しました。また`s`の推定値としては3.06となっており、これも真の値と近しいものになっています。`optim`いいですね。
+
+
+### 終わりに
+
+今回は過小分散なカウントデータを扱うために`rmutil`と`dglm`というパッケージを使ってみました。`optim`による推定は思いの外うまくいったようですが、`dglm`の結果は少しパッとしませんでした。ただし`s`の求め方については本当にこれで合っているのか自信がないため、推定できているかについての判断は保留です。ご存知の方がいらっしゃれば教えてください。
+
+
+
+
+
+
+
+
+
+```{r}
+install.packages("gamlss.dist")
+```
+
+```{r}
+library(gamlss.dist)
+```
+
+
+```{r}
+set.seed(123)
+n <- 500
+m <- 5 # 平均
+s <- 2 # Overdispersion parameter
+
+d <- data.frame(
+   y1 = rdoublepois(n, m, s),
+   y2 = rDPO(n, m, s))
+```
+
+```{r}
+head(d)
+```
+
+
+```{r}
+sapply(d, mean)
+sapply(d, var)
+```
+
+```{r}
+sqrt(mean(d$y1) * s)
+sqrt(mean(d$y2) * s)
+mean(d$y1) * s
+mean(d$y2) * s
+```
+
+
+
+
+
+
