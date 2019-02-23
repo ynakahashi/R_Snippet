@@ -1,0 +1,111 @@
+---
+title: "Machine Learning with Spark"
+author: "ynakahashi"
+date: "2019/2/23"
+output: html_document
+---
+
+```{r}
+install.packages("sparklyr")
+```
+
+```{r}
+library(sparklyr)
+spark_install(version = "2.4.0")
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+sc <- spark_connect(master = "local")
+```
+
+
+```{r}
+iris_tbl <- copy_to(sc, iris, "iris", overwrite = TRUE)
+iris_tbl
+```
+
+```{r}
+regression_model <- 
+   iris_tbl %>%
+   select(Petal_Width, Petal_Length) %>%
+   ml_linear_regression(Petal_Width ~ Petal_Length)
+```
+
+
+```{r}
+mtcars_tbl <- sdf_copy_to(sc, mtcars, name = "mtcars_tbl", overwrite = TRUE)
+
+partitions <- 
+   mtcars_tbl %>%
+   sdf_partition(training = 0.7, test = 0.3, seed = 1111)
+
+mtcars_training <- partitions$training
+mtcars_test <- partitions$test
+
+lr_model <- 
+   mtcars_training %>%
+   ml_logistic_regression(am ~ gear + carb)
+
+pred <- sdf_predict(mtcars_test, lr_model)
+
+ml_binary_classification_evaluator(pred)
+```
+
+
+
+
+
+
+```{r}
+family <- c("gaussian", "gamma", "poisson")
+link <- c("identity", "log")
+family_link <- expand.grid(family = family, link = link, stringsAsFactors = FALSE)
+family_link <- data.frame(family_link, rmse = 0)
+
+# Train the models
+for(i in 1:nrow(family_link)) {
+   glm_model <- 
+      mtcars_training %>%
+      ml_generalized_linear_regression(mpg ~ .,
+                                       family = family_link[i, 1],
+                                       link = family_link[i, 2])
+
+   pred <- sdf_predict(mtcars_test, glm_model)
+   family_link[i, 3] <- ml_regression_evaluator(pred, label_col = "mpg")
+}
+
+family_link
+```
+
+
+```{r}
+partitions <- 
+   iris_tbl %>%
+   sdf_partition(training = 0.7, test = 0.3, seed = 1111)
+
+iris_training <- partitions$training
+iris_test <- partitions$test
+
+rf_model <- 
+   iris_training %>%
+   ml_random_forest(Species ~ ., type = "classification", num_trees = 500)
+
+pred <- sdf_predict(iris_test, rf_model)
+
+ml_multiclass_classification_evaluator(pred, metric_name = "f1")
+```
+
+
+```{r}
+install.packages("graphframes")
+```
+
+
+
+
+
+
