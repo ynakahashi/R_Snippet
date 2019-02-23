@@ -5,8 +5,65 @@ date: "2018/6/28"
 output: html_document
 ---
 
-```{r}
 
+## データを小集団に分割しながら線形回帰を当てはめる
+
+[contents:]
+
+
+### 背景
+線形回帰と言えば、一般に以下の正規方程式：
+
+[tex: X'Xb = (X'X)\^{-1}X'y]
+
+をbについて解くことで得られると教わるのではないでしょうか。しかし実際には逆行列によってではなく、QR分解を活用して解いているケースがあります。以前の記事において、Rでも`lm`のソースコードをたどっていった結果、ハウスホルダー変換によってQR分解が行われていることを確認しました。
+
+ここで`lm`と逆行列およびQR分解による解の推定値をちょっと見てみましょう。適当にデータを作成します。
+
+```{r}
+set.seed(123)
+n <- 100
+b <- c(1, 1.5)
+x <- cbind(1, rnorm(n))
+y <- x %*% b + rnorm(n)
+```
+
+それぞれの解の推定方法を以下のように定義します。
+
+```{r}
+## lm(.fit)を使う
+my_lm <- function() { coef(lm.fit(x, y)) }
+
+## 逆行列で解く
+my_solve <- function() { solve(crossprod(x, x)) %*% crossprod(x, y) }
+
+## QR分解で解く
+my_qr <- function() { qr.coef(qr(x), y) }
+```
+
+まずは解が一致することを確認します。
+
+```{r}
+cbind(my_solve(), my_qr(), my_lm())
+```
+
+一緒の値になっています。少し脱線しますが、計算時間も見てみましょう：
+
+```{r}
+time_100 <- microbenchmark::microbenchmark(my_solve(), my_qr(), my_lm())
+ggplot2::autoplot(time_100)
+```
+
+逆行列を用いた場合が一番早いようです。
+
+
+さて、このようにして線形回帰の解はQR分解を使って得ることができますが、実は計算を工夫することで
+
+
+
+[こちら](https://freakonometrics.hypotheses.org/53269)
+
+```{r}
 lm(dist ~ speed, data = cars)$coefficients
 y <- cars$dist
 X <- cbind(1, cars$speed)
@@ -35,7 +92,6 @@ for(j in 1:m) {
    QR1[[j]] <- list(Q = qr.Q(qr(Xlist[[j]])),
                     R = qr.R(qr(Xlist[[j]])))
 }
-
 
 R1 <- QR1[[1]]$R
 for(j in 2:m) {
