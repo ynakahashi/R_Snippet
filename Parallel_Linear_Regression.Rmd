@@ -12,23 +12,27 @@ output: html_document
 
 
 ### 背景
-線形回帰と言えば、一般に以下の正規方程式：
+突然ですが、一般に線形回帰と言えば以下の正規方程式：
 
 [tex: X'Xb = (X'X)\^{-1}X'y]
 
-をbについて解くことで得られると教わるのではないでしょうか。しかし実際には逆行列によってではなく、QR分解を活用して解いているケースがあります。以前の記事において、Rでも`lm`のソースコードをたどっていった結果、ハウスホルダー変換によってQR分解が行われていることを確認しました。
+をbについて解くことで得られると教わり、そのまま理解していることが多いのではないでしょうか。
+
+これ自体は決して間違っていないのですが、実装においては計算精度の問題から、逆行列ではなくQR分解を活用して解いている場合があります。例えばRでも、以前の記事において`lm`のソースコードをたどっていった結果、ハウスホルダー変換によってQR分解が行われていることを確認しました。
+
+以前の記事はこちら。
 
 ここで`lm`と逆行列およびQR分解による解の推定値をちょっと見てみましょう。適当にデータを作成します。
 
 ```{r}
 set.seed(123)
 n <- 100
-b <- c(1, 1.5)
+b <- c(1, 1.5) # 切片と回帰係数
 x <- cbind(1, rnorm(n))
 y <- x %*% b + rnorm(n)
 ```
 
-それぞれの解の推定方法を以下のように定義します。
+また、それぞれによる解の推定方法を以下のように定義します。
 
 ```{r}
 ## lm(.fit)を使う
@@ -38,87 +42,241 @@ my_lm <- function() { coef(lm.fit(x, y)) }
 my_solve <- function() { solve(crossprod(x, x)) %*% crossprod(x, y) }
 
 ## QR分解で解く
-my_qr <- function() { qr.coef(qr(x), y) }
+# my_qr <- function() { qr.coef(qr(x), y) }
+my_qr <- function() { solve(qr.R(qr(x))) %*% t(qr.Q(qr(x))) %*% y }
 ```
 
-まずは解が一致することを確認します。
+上で定義した関数は、いずれも同じ解を返します：
 
 ```{r}
 cbind(my_solve(), my_qr(), my_lm())
 ```
 
-一緒の値になっています。少し脱線しますが、計算時間も見てみましょう：
+一緒の値になっていますね。少し脱線しますが、ついでに計算時間も見てみましょう：
 
 ```{r}
-time_100 <- microbenchmark::microbenchmark(my_solve(), my_qr(), my_lm())
-ggplot2::autoplot(time_100)
+time_1000 <- microbenchmark::microbenchmark(my_solve(), my_qr(), my_lm(), times = 1000)
+ggplot2::autoplot(time_1000)
 ```
 
-逆行列を用いた場合が一番早いようです。
+逆行列を用いた場合が一番早く、QR分解を用いたものが最も遅いようでした。なおこのグラフはX軸が対数となっていることに注意してください。
+
+さて、このようにして線形回帰の解はQR分解を使って得ることができますが、実は計算を工夫することで、Xを小集団に分割した上でそれぞれの解を使ってX全体の解を得ることができます。これが何を意味するかというと、メモリに載りきらないような大きなデータであっても回帰を実行することができる、あるいは並列に計算を回すことができる、ということです。
+
+もともと今回の記事を書こうと思ったのは、以前に「線形回帰はデータを分割して並列計算できる」という話を知人から聞いたことをふと思い出したのがきっかけです。当時は何を言っているのか今いち理解できなかったのですが、大変わかりやすい下記の記事を見つけたため、写経した内容をメモしておきます。
+
+[https://freakonometrics.hypotheses.org/53269:cited]
 
 
-さて、このようにして線形回帰の解はQR分解を使って得ることができますが、実は計算を工夫することで
+### 手順
+実装に取り掛かる前に手順について簡単に理解しておきましょう。まずXをQR分解することで冒頭に示した正規方程式から得られる[tex: \hat{\beta}]は以下のようになります：
+
+$$
+\hat{\beta} = (X'X)^{-1}X'y = (R'Q'QR)^{-1}R'Q'y = (R'R)^{-1}R'Q'y
+$$
+
+QR分解によって得られる行列Qは直交行列であるため、[tex: (Q'Q) = I]となります。またここで積の逆行列は[tex: (AB)^{-1} = B^{-1}A^{-1}]という性質があることから、
+
+$$
+(R'R)^{-1}R'Q'y = R^{-1}R'^{-1}R'Q'y = R^{-1}Q'y
+$$
+
+となります。すなわちQR分解によって得られた行列Rの逆行列と、行列Qの転置があれば良いことになります。先ほど`my_qr`を定義したときは説明なく示しましたが、これは下のように書けます：
+
+```{r}
+## my_qrの定義（再掲）
+solve(qr.R(qr(x))) %*% t(qr.Q(qr(x))) %*% y
+```
+
+問題は、この[tex: R^{-1}]および[tex: Q']をどのようにして小集団から再構成するか、ということになります。
+
+上記を踏まえ、以下の流れで計算を行っていきましょう：
+1. 共通処理
+   1. X、yをそれぞれ小集団に分割する
+   2. 各小集団のXをQR分解する
+2. [tex: R^{-1}]を計算する
+3. [tex: Q']を計算する
+4. 2と3の結果およびyにより解を得る
 
 
-
-[こちら](https://freakonometrics.hypotheses.org/53269)
+### 実装
+それでは実装に入りますが、先にデータをすべて使った時の回帰係数を確認しておきましょう。サンプルデータには`cars`を使い、目的変数を`dist`、説明変数を`speed`とした単回帰を回してみます。
 
 ```{r}
 lm(dist ~ speed, data = cars)$coefficients
+```
+
+切片と`speed`の回帰係数がそれぞれ`-17.579`、`3.932`と推定されました。冒頭でも確認した通り、`lm`の結果は下記の方法と一致します。
+
+
+```{r}
 y <- cars$dist
-X <- cbind(1, cars$speed)
+x <- cbind(1, cars$speed)
 
-solve(crossprod(X, X)) %*% crossprod(X, y)
-solve(t(X) %*% X) %*% t(X) %*% y
+cbind(
+   solve(crossprod(x, x)) %*% crossprod(x, y),
+   solve(qr.R(qr(x))) %*% t(qr.Q(qr(x))) %*% y
+)
+```
+
+この数値を、分割した小集団に対する計算結果から再び得ることが目標となります。
 
 
-solve(qr.R(qr(as.matrix(X)))) %*% t(qr.Q(qr(as.matrix(X)))) %*% y
-solve(qr.R(qr(X))) %*% t(qr.Q(qr(X))) %*% y
+#### 1. 共通処理
+では次に、`x`を小集団に分割した上で解を推定していきます。今回はデータを5つに分割しましょう。`x`は50行のデータなので各データセットには10行ずつ割り当てられます。
 
-m <- 5
+```{r}
+# 分割するデータの数
+m <- 5 
+n_per_d <- nrow(x) / m
 
-Xlist <- list()
-for(j in 1:m) {
-   Xlist[[j]] = X[(j-1)*10 + 1:10, ]
+# 割り切れなかった場合用
+if (nrow(x) %% m != 0) m <- m + 1 
+
+xlist <- list() # 各xの保存用リスト
+ylist <- list() # 各yの保存用リスト
+for (i in 1:m) {
+   if(i == m) {
+      xlist[[i]] = x[((i-1) * n_per_d + 1):nrow(x), ]
+      ylist[[i]] = y[((i-1) * n_per_d + 1):nrow(x)]
+   }
+   xlist[[i]] = x[(i-1) * n_per_d + 1:n_per_d, ]
+   ylist[[i]] = y[(i-1) * n_per_d + 1:n_per_d]
 }
+```
 
-ylist <- list()
-for(j in 1:m) {
-   ylist[[j]] = y[(j-1)*10 + 1:10]
+
+次に各データセットをQR分解し、結果として得られる行列QおよびRをそれぞれ保存しておきます。リストの各要素は、更にそれぞれQとRを要素に持つリストとなります。
+
+```{r}
+QR1 <- list() # 各データセットに対するQR分解の結果を保存するリスト
+for (i in 1:m) {
+   QR1[[i]] <- list(Q = qr.Q(qr(xlist[[i]])),
+                    R = qr.R(qr(xlist[[i]])))
 }
+```
 
-QR1 <- list()
-for(j in 1:m) {
-   QR1[[j]] <- list(Q = qr.Q(qr(Xlist[[j]])),
-                    R = qr.R(qr(Xlist[[j]])))
+この時点で`QR1`は、10行2列の行列Qと2行2列の上三角行列Rを要素に持つリストになっています。
+
+続いて行列Rを`rbind`で一つにまとめた上で、この行列をさらにQR分解します。
+
+```{r}
+R1 <- c()
+for(i in 1:m) {
+   R1 <- rbind(R1, QR1[[i]]$R)
 }
-
-R1 <- QR1[[1]]$R
-for(j in 2:m) {
-   R1 <- rbind(R1, QR1[[j]]$R)
-}
-
 Q1 <- qr.Q(qr(R1))
 R2 <- qr.R(qr(R1))
+```
+
+上記の処理で得られた行列Q（`Q1`）について、説明変数の数（今回は2）ごとにデータを分割します。
+
+```{r}
+## 説明変数の数
+p <- ncol(x)
+
 Q2list <- list()
-for(j in 1:m) {
-   Q2list[[j]] <- Q1[(j-1)*2 + 1:2, ]
+for(i in 1:m) {
+   Q2list[[i]] <- Q1[(i-1) * p + 1:p, ]
 }
+```
 
+この`Q2list`を最初にQR分解した結果の行列Qと掛け合わせます。
+
+```{r}
 Q3list <- list()
-for(j in 1:m) {
-   Q3list[[j]] <- QR1[[j]]$Q %*% Q2list[[j]]
+for(i in 1:m) {
+   Q3list[[i]] <- QR1[[i]]$Q %*% Q2list[[i]]
 }
+```
 
+そして計算された行列を`ylist`と乗じ、結果を要素ごとに足し合わせます。
+
+```{r}
 Vlist <- list()
-for(j in 1:m) {
-   Vlist[[j]] <- t(Q3list[[j]]) %*% ylist[[j]]
+for(i in 1:m) {
+   Vlist[[i]] <- t(Q3list[[i]]) %*% ylist[[i]]
 }
 
 sumV <- Vlist[[1]]
-for(j in 2:m) {
-   sumV <- sumV + Vlist[[j]]
+for(i in 2:m) {
+   sumV <- sumV + Vlist[[i]]
 }
-solve(R2) %*% sumV
 ```
+
+```{r}
+cbind(
+   solve(R2) %*% sumV,
+   solve(crossprod(x, x)) %*% crossprod(x, y),
+   solve(qr.R(qr(x))) %*% t(qr.Q(qr(x))) %*% y
+)
+```
+
+
+
+```{r}
+library(tidyverse)
+X <- data_frame(intercept = 1, speed = cars$speed) %>% as.matrix()
+y <- cars$dist
+mats <- X %>%
+   as_data_frame() %>%
+   mutate(
+      id = rep(1:5, each = 10) ,
+      y = y
+   ) %>% 
+   ## this is where partitioning happens
+   nest(-id) %>% 
+   mutate(
+      X = map(data, ~ .x %>% select(-y) %>% as.matrix()),
+      y = map(data, ~ .x %>% pull(y))
+   ) %>% 
+   ## We calculate QR decomposition for each partition independently
+   mutate(
+      Q2 = map(X, ~ .x %>% qr() %>% qr.Q()),
+      R1 = map(X, ~ .x %>% qr() %>% qr.R())
+   )
+
+
+df_collect <- mats$R1 %>% do.call(what = 'rbind', args = .)
+data.frame(dimension = c('rows', 'columns'), cbind(X %>% dim(), df_collect %>% dim()))
+
+
+## Number of groups for nesting can be automatically inferred
+m2 <-  dim(mats$R1[[1]])[2]
+
+## The map-stage QR-decomposition
+Q1 = df_collect %>% qr %>% qr.Q
+R2 = df_collect %>% qr %>% qr.R
+
+## For some reason this did not work with a `mutate` command...
+mats$Q1 = 
+   Q1 %>% 
+   as_data_frame() %>% 
+   mutate(id = ceiling(row_number() / m2)) %>% 
+   nest(-id) %>% 
+   mutate(data = map(data, ~ as.matrix(.x))) %>% 
+   pull(data)
+
+v_sum = 
+   mats %>% 
+   mutate(Q3_t = map2(.x = Q2, .y = Q1, .f = ~ t(.x %*% .y))) %>%
+   mutate(V = map2(.x = Q3_t, .y = y, .f = ~ .x %*% .y)) %>% 
+   pull(V) %>% 
+   reduce(`+`)
+
+t(solve(R2) %*% v_sum)
+```
+
+ 1. 
+ 2. 
+ 3. 2で得られた行列Rを更にQR分解する
+ 4. 3で得られた行列Qを、2で得られた行列Qに乗じる
+ 5. 更にyに乗じる
+ 6. 3で得られた行列Rの逆行列を求め、5の総和と乗じる
+
+
+<div align="center">[tex:
+\mathfrak{J}^ {(m-1)}\mathbf{b}^ {(m)} = \mathfrak{J}^ {(m-1)}\mathbf{b}^ {(m-1)}  +  \mathbf{U}^ {(m-1)}
+\tag{1}
+]</div>
 
