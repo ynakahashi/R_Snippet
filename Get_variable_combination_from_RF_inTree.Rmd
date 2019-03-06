@@ -5,27 +5,34 @@ date: "2019/2/8"
 output: html_document
 ---
 
-## 
+## randomForestで有効な交互作用を発見したい②
+
+[contents:]
 
 ### 背景
-前回こんな記事を書いたのですが、
+少し前にこんな記事を書きました。
 
 ここで前回の記事
 
 その後、知人から「こんなのあるよ」と教えてもらいました。
 
-InTrees
+スクリーンショットを貼る
+
+[inTrees](https://cran.r-project.org/web/packages/inTrees/index.html)
+[inTreesの解説](https://www.slideshare.net/kato_kohaku/interpreting-tree-ensembles-with-intrees)
+
 
 ・・・
 ・・・・・・
 ・・・・・・・・・
 
-すでに実装されていたんですね。。。検索が足りなかったようです。
-
+すでに同じようなのが実装されていたんですね。検索が足りなかったようです。。。
 聞いたときは面白いアイディアだと思ったんですが、結構みんな考えてることだったんですね。少しがっかり。。。
 でもまぁ、冷静に考えればそりゃありますよね。。。
 
+
 ### 概要
+気を取り直して、`inTrees`の
 
 
 

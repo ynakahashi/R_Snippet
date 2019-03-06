@@ -1,0 +1,140 @@
+---
+title: "Multiway Random Forest"
+author: "ynakahashi"
+date: "2019/3/4"
+output: html_document
+---
+
+## 多分木
+
+### 背景
+Random Forestは優れたアルゴリズムだと思うのですが、少々気に入らないところもあります。その一つがカテゴリカルデータの扱いです。カテゴリカル変数をそのまま使った場合にどうなるか、さくっと見てみましょう。`randomForest`でモデルを作ります：
+
+```{r}
+library(randomForest)
+dat <- epitools::expand.table(Titanic)
+rf <- randomForest(Survived ~ ., dat, ntree = 10)
+```
+
+精度はともかく、結果はちゃんと得られているように見えます。
+
+```{r}
+rf
+```
+
+ところが`getTree`を用いて決定木を抽出してみると、カテゴリカル変数であるにも関わらず数値で分類されていることがわかります（`split point`を参照）。
+
+```{r}
+getTree(rf, 1, labelVar = T)
+```
+
+これは、`randomForest`の中でカテゴリカル変数は`data.matrix`で数値型に変換されていることによります。以下を確認しましょう。
+
+```{r}
+randomForest:::randomForest.default
+function (x, y = NULL, xtest = NULL, ytest = NULL, ntree = 500, # 中略
+    keep.inbag = FALSE, ...) 
+{
+
+## 中略
+
+   if (is.data.frame(x)) {
+      xlevels <- lapply(x, mylevels)
+      ncat <- sapply(xlevels, length)
+      ncat <- ifelse(sapply(x, is.ordered), 1, ncat)
+      x <- data.matrix(x)
+   
+      ## 中略
+   }
+}
+```
+
+カテゴリカル変数（名義・順位尺度）では各水準間に定量的な関係性を当てはめられないため、これは嬉しくないですね。
+
+一般的には、このようなことを避けるためにはカテゴリカル変数について事前に何らかの形で数値化（Encoding）しておく必要があります。しかしこれも水準数が多い場合はダミー化すると途端に列の数が増えてしまいますし、またダミー化してしまうと「トータルで見た時のカテゴリカル変数の重要度」のようなものを評価することができません（分散分析のイメージです）。ある変数が重要であったか（予測値に対して何らかの影響を及ぼしているか）を各水準ではなく変数単位で評価したいと思ったとき、ダミー化では対応できません。
+
+それではどうすれば良いか
+
+
+
+### Option
+
+大まかな選択肢としては：
+ - 多分木にする
+ - 二分木にする
+   - 量的変数
+      - FindBestSplit
+   - カテゴリカル変数
+      - MergeGroupLevels
+
+1. 二分木にする
+   1. 停止基準を満たすかを判定する
+   1. 満たさなかった場合、
+   	1. データを選択する
+   	1. 変数候補を選択する
+   	1. 選択された変数について、量的変数か質的変数かを判定しながらNew_Var_Matに
+   		1. 量的変数ならFindBestSplitで閾値を決める
+   		1. 質的変数ならChi Mergeでグループに分けるフラグを立てる
+   	1. Purityを最も向上させる変数を選択する
+   	1. データを分割する
+   	1. 左のリーフに入る
+   1. 満たした場合、右のリーフに移動する
+   1. 
+
+
+while (stop_flg == F) {
+
+
+
+}
+
+
+
+
+```{r}
+library(randomForest)
+dat <- epitools::expand.table(Titanic)
+res_rf <- randomForest(Survived ~ ., dat, ntrees = 100)
+res_rf$importance
+plot(res_rf)
+
+head(getTree(rf, 1, labelVar = T))
+levels(dat$Class)
+levels(dat$Sex)
+levels(dat$Age)
+
+fil_all_rf <- c()
+for (i in 1:res_rf$ntree) {
+   tmp <- na.omit(getTree(res_rf, i, labelVar = T))
+   fil <- tmp[tmp$`split var` == "Species", ]
+   fil_all_rf <- rbind(fil_all_rf, fil)
+}
+
+head(fil_all)
+
+
+library(ranger)
+res_ranger <- ranger(Survived ~ ., dat, num.trees = 100, importance = "impurity")
+res_ranger$variable.importance
+treeInfo(res_ranger, 1)
+
+fil_all_rgr <- c()
+for (i in 1:res_ranger$num.trees) {
+   tmp <- na.omit(treeInfo(res_ranger, i))
+   fil <- tmp[tmp$splitvarName == "Species", ]
+   fil_all_rgr <- rbind(fil_all_rgr, fil)
+}
+head(fil_all_rgr)
+
+
+
+num_tree <- c(1:res_ranger$num.trees)
+my_get_tree <- function(x) {
+   ranger::treeInfo(res_ranger, x)
+}
+purrr::map_dfr(as.matrix(num_tree), my_get_tree)
+
+
+
+```
+
