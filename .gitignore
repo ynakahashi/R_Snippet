@@ -7,3 +7,4 @@ logs/log4j.spark.log
 .Rhistory
 .Rhistory
 *.txt
+*.ipynb
