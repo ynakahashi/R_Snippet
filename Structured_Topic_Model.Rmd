@@ -1,0 +1,631 @@
+---
+title: "LDA, Structured Topic Model"
+author: "ynakahashi"
+date: "2019/3/6"
+output: html_document
+---
+
+## 階層的なトピックモデルを作りたい
+
+[contents:]
+
+### 背景
+- 前職での経験
+
+### 概要
+1. テキストデータを取得する
+   - コーパスを取ってくる
+   - 前処理
+2. 階層的にトピックモデルを作る
+   - 大きく区分する（ニュースソースの数？）
+   - それぞれを更に区分する
+3. トピックを細かく分けてから階層化する
+   - 細かく分ける
+   - 階層クラスタリングにかける
+
+
+### 実装
+#### 1. テキストデータを取得する
+
+Livedoorニュースのコーパス
+https://www.rondhuit.com/download.html#ldcc
+
+
+Pythonで実施
+この記事を丸パクリ
+https://qiita.com/hyo_07/items/ba3d53868b2f55ed9941
+
+
+```{python}
+aaa
+```
+
+
+```{r}
+library(tidyverse)
+library(RMeCab)
+library(tidytext)
+library(stm)
+library(furrr)
+```
+
+
+```{r}
+dat <- read_csv("./Data/Livedoor_Corpus_Text.csv")
+```
+
+### 半角を全角に直す
+
+下記を利用（一部修正）
+http://horihorio.hatenablog.com/entry/2015/01/29/001438
+
+```{r}
+hankana2zenkana <- function(x) {
+   # character変換 
+   if (!is.character(x)){ x <- as.character(x) }
+   
+   # 濁点、半濁点文字の置換
+   dh <- c("ｶﾞ","ｷﾞ","ｸﾞ","ｹﾞ","ｺﾞ","ｻﾞ","ｼﾞ","ｽﾞ","ｾﾞ","ｿﾞ","ﾀﾞ","ﾁﾞ","ﾂﾞ","ﾃﾞ",
+           "ﾄﾞ","ﾊﾞ","ﾋﾞ","ﾌﾞ","ﾍﾞ","ﾎﾞ","ﾊﾟ","ﾋﾟ","ﾌﾟ","ﾍﾟ","ﾎﾟ")
+   dz <- c("ガ","ギ","グ","ゲ","ゴ","ザ","ジ","ズ","ゼ","ゾ","ダ","ヂ","ヅ","デ","ド",
+           "バ","ビ","ブ","ベ","ボ","パ","ピ","プ","ペ","ポ")
+   for( i in 1:length(dz) ){ x <- gsub(dh[i],　dz[i],　x) }
+   
+   # 1bite文字の置換
+   x <- chartr("ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝ｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰ"
+               , "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン。「」、・ヲァィゥェォャュョッー"
+               , x)
+   
+   # printは外した
+   x
+}
+```
+
+```{r}
+dat <- 
+   dat %>% 
+   mutate(Text = hankana2zenkana(.$Text))
+```
+
+
+#### 2. 階層的にトピックモデルを作る
+日本語はこちらを参照
+https://www.slideshare.net/kashitan/tidytextrmecab-112565921
+
+```{r}
+dat_mcb <- 
+   dat %>% 
+   as.data.frame() %>% 
+   RMeCabDF("Text", 1)
+
+mcb_out <- purrr::pmap_df(list(nv = dat_mcb, id = 1:length(dat_mcb)),
+                          function(nv, id) {
+                             tibble(id = id, word = nv, type = names(nv))
+                          })
+mcb_out
+```
+
+
+```{r}
+pos_words <- 
+   mcb_out %>% 
+   # filter(type %in% c("名詞", "動詞", "助動詞", "接頭詞", "副詞")) %>% 
+   filter(type %in% c("名詞", "動詞")) %>%
+   select(id, word)
+
+stop_words <- c("\"", "*", "?", "/", ".", "(", ")", "-", "?\"", "、", 
+             ",", "。", "）", "\"（", ")、", "?/", "~", "）\"", "*",
+             "？\"", "する")
+
+res_token <- 
+   
+   # dat %>%
+   # unnest_tokens(word, text) %>%
+   # anti_join(get_stopwords()) %>%
+   # # anti_join(my_stopwords) %>%
+   # filter(!str_detect(word, "[0-9]+")) %>%
+   # filter(!str_detect(word, "[a-z]+")) %>%
+   # filter(!str_detect(word, "^[ぁ-んァ-ヶ]$")) %>%
+   # add_count(word)
+   
+   pos_words %>% 
+   filter(!str_detect(word, "[0-9]+")) %>%
+   filter(!str_detect(word, "[a-z]+")) %>%
+   filter(!str_detect(word, "^[ぁ-んァ-ヶ]$")) %>%
+   filter(!word %in% stop_words) %>% 
+   add_count(word)
+
+tmp <- unique(res_token %>% select(-id))
+tmp
+```
+
+```{r}
+res_token_sel <- 
+   res_token %>% 
+   filter(n > 50) %>%
+   select(-n)
+
+res_token_sel
+```
+
+```{r}
+res_token_s <- 
+   res_token_sel %>%
+   count(id, word) %>%
+   cast_sparse(id, word, n)
+```
+
+
+### K = {6, 7, 8, 9, 10, 11, 12}
+
+```{r}
+plan(multiprocess)
+
+set.seed(1234)
+st <- Sys.time()
+model_k <- 
+   # data_frame(K = c(30, 50, 100)) %>%
+   # data_frame(K = c(30, 50, 100)) %>%
+   data_frame(K = c(6, 7)) %>%
+   # data_frame(K = c(6, 7, 8, 9, 10, 11, 12)) %>%
+   mutate(topic_model = future_map(K, ~stm(res_token_s, K = .,
+                                           verbose = FALSE)))
+print(Sys.time() - st)
+# save(model_k, file = "model_4_to_8.Rdata")
+```
+
+
+```{r}
+heldout <- make.heldout(res_token_s)
+k_result <- 
+   model_k %>%
+   mutate(exclusivity = map(topic_model, exclusivity),
+          semantic_coherence = map(topic_model, semanticCoherence, res_token_s),
+          eval_heldout = map(topic_model, eval.heldout, heldout$missing),
+          residual = map(topic_model, checkResiduals, res_token_s),
+          bound =  map_dbl(topic_model, function(x) max(x$convergence$bound)),
+          lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
+          lbound = bound + lfact,
+          iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
+k_result
+```
+
+
+```{r}
+k_result %>%
+   transmute(K,
+             Lower_Bound = lbound,
+             Residuals = map_dbl(residual, "dispersion"),
+             Semantic_Coherence = map_dbl(semantic_coherence, mean),
+             Heldout_Likelihood = map_dbl(eval_heldout, "expected.heldout")) %>%
+   gather(Metric, Value, -K) %>%
+   ggplot(aes(K, Value, color = Metric)) +
+   geom_line(size = 1.5, alpha = 0.7, show.legend = FALSE) +
+   facet_wrap(~Metric, scales = "free_y") +
+   labs(x = "K (number of topics)",
+        y = NULL,
+        title = "Model diagnostics by number of topics",
+        subtitle = "These diagnostics indicate that a good number of topics would be around 60")
+```
+
+
+
+```{r}
+k_result %>%
+   select(K, exclusivity, semantic_coherence) %>%
+   # filter(K %in% c(20, 60, 100)) %>%
+   unnest() %>%
+   mutate(K = as.factor(K)) %>%
+   ggplot(aes(semantic_coherence, exclusivity, color = K)) +
+   geom_point(size = 2, alpha = 0.7) +
+   labs(x = "Semantic coherence",
+        y = "Exclusivity",
+        title = "Comparing exclusivity and semantic coherence",
+        subtitle = "Models with fewer topics have higher semantic coherence for more topics, but lower exclusivity")
+```
+
+
+
+```{r}
+tm <- k_result %>% 
+   filter(K == 8) %>% 
+   pull(topic_model) %>% 
+   .[[1]]
+tm
+```
+
+
+```{r}
+td_beta <- tidy(tm)
+td_beta
+```
+
+```{r}
+td_gamma <- tidy(tm, matrix = "gamma",
+                 document_names = dat$text)
+td_gamma
+```
+
+
+
+```{r}
+library(ggthemes)
+
+top_terms <- 
+   td_beta %>%
+   arrange(beta) %>%
+   group_by(topic) %>%
+   top_n(7, beta) %>%
+   arrange(-beta) %>%
+   select(topic, term) %>%
+   summarise(terms = list(term)) %>%
+   mutate(terms = map(terms, paste, collapse = ", ")) %>% 
+   unnest()
+
+gamma_terms <- 
+   td_gamma %>%
+   group_by(topic) %>%
+   summarise(gamma = mean(gamma)) %>%
+   arrange(desc(gamma)) %>%
+   left_join(top_terms, by = "topic") %>%
+   mutate(topic = paste0("Topic ", topic),
+          topic = reorder(topic, gamma))
+
+gamma_terms %>%
+   top_n(20, gamma) %>%
+   ggplot(aes(topic, gamma, label = terms, fill = topic)) +
+   geom_col(show.legend = FALSE) +
+   geom_text(hjust = 0, nudge_y = 0.0005, size = 3,
+             family = "HiraKakuProN-W3") +
+   coord_flip() +
+   # scale_y_continuous(expand = c(0,0),
+   #                    limits = c(0, 0.09),
+   #                    labels = percent_format()) +
+   theme_tufte(base_family = "HiraKakuProN-W3", ticks = FALSE) +
+   theme(plot.title = element_text(size = 16,
+                                   family="HiraKakuProN-W3"),
+         plot.subtitle = element_text(size = 13)) +
+   labs(x = NULL, y = expression(gamma))
+```
+
+
+```{r}
+gamma_terms %>%
+   select(topic, gamma, terms) %>%
+   knitr::kable(digits = 3, 
+         col.names = c("Topic", "Expected topic proportion", "Top 7 terms"))
+```
+
+```{r}
+td_gamma %>% filter(document == "ルームランプがつかない")
+td_gamma %>% filter(document == "急ブレーキ気味にブレーキをかけると後ろから変な音(コトコト、カラカラ)がする")
+```
+
+
+### K = {10, 12, 15, 20}
+
+```{r}
+plan(multiprocess)
+
+set.seed(1234)
+st <- Sys.time()
+model_k_10_20 <- 
+   data_frame(K = c(10, 12, 15, 20)) %>%
+   mutate(topic_model = future_map(K, ~stm(res_token_s, K = .,
+                                           verbose = FALSE)))
+print(Sys.time() - st)
+
+save(model_k_10_20, file = "model_10_to_20.Rdata")
+```
+
+
+```{r}
+k_result_10_20 <- 
+   model_k_10_20 %>%
+   mutate(exclusivity = map(topic_model, exclusivity),
+          semantic_coherence = map(topic_model, semanticCoherence, res_token_s),
+          eval_heldout = map(topic_model, eval.heldout, heldout$missing),
+          residual = map(topic_model, checkResiduals, res_token_s),
+          bound =  map_dbl(topic_model, function(x) max(x$convergence$bound)),
+          lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
+          lbound = bound + lfact,
+          iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
+k_result_10_20
+```
+
+```{r}
+k_result_10_20 %>%
+   transmute(K,
+             Lower_Bound = lbound,
+             Residuals = map_dbl(residual, "dispersion"),
+             Semantic_Coherence = map_dbl(semantic_coherence, mean),
+             Heldout_Likelihood = map_dbl(eval_heldout, "expected.heldout")) %>%
+   gather(Metric, Value, -K) %>%
+   ggplot(aes(K, Value, color = Metric)) +
+   geom_line(size = 1.5, alpha = 0.7, show.legend = FALSE) +
+   facet_wrap(~Metric, scales = "free_y") +
+   labs(x = "K (number of topics)",
+        y = NULL,
+        title = "Model diagnostics by number of topics",
+        subtitle = "These diagnostics indicate that a good number of topics would be around 60")
+```
+
+
+
+```{r}
+k_result_10_20 %>%
+   select(K, exclusivity, semantic_coherence) %>%
+   # filter(K %in% c(20, 60, 100)) %>%
+   unnest() %>%
+   mutate(K = as.factor(K)) %>%
+   ggplot(aes(semantic_coherence, exclusivity, color = K)) +
+   geom_point(size = 2, alpha = 0.7) +
+   labs(x = "Semantic coherence",
+        y = "Exclusivity",
+        title = "Comparing exclusivity and semantic coherence",
+        subtitle = "Models with fewer topics have higher semantic coherence for more topics, but lower exclusivity")
+```
+
+Pick best 1
+
+```{r}
+tm2 <- 
+   k_result_10_20 %>% 
+   filter(K == 20) %>% 
+   pull(topic_model) %>% 
+   .[[1]]
+td_beta_2 <- tidy(tm2)
+td_gamma_2 <- tidy(tm2, matrix = "gamma", document_names = dat$text)
+top_terms_2 <- 
+   td_beta_2 %>%
+   arrange(beta) %>%
+   group_by(topic) %>%
+   top_n(7, beta) %>%
+   arrange(-beta) %>%
+   select(topic, term) %>%
+   summarise(terms = list(term)) %>%
+   mutate(terms = map(terms, paste, collapse = ", ")) %>% 
+   unnest()
+
+gamma_terms_2 <- 
+   td_gamma_2 %>%
+   group_by(topic) %>%
+   summarise(gamma = mean(gamma)) %>%
+   arrange(desc(gamma)) %>%
+   left_join(top_terms_2, by = "topic") %>%
+   mutate(topic = paste0("Topic ", topic),
+          topic = reorder(topic, gamma))
+
+gamma_terms_2 %>%
+   top_n(20, gamma) %>%
+   ggplot(aes(topic, gamma, label = terms, fill = topic)) +
+   geom_col(show.legend = FALSE) +
+   geom_text(hjust = 0, nudge_y = 0.0005, size = 3,
+             family = "HiraKakuProN-W3") +
+   coord_flip() +
+   # scale_y_continuous(expand = c(0,0),
+   #                    limits = c(0, 0.09),
+   #                    labels = percent_format()) +
+   theme_tufte(base_family = "HiraKakuProN-W3", ticks = FALSE) +
+   theme(plot.title = element_text(size = 16,
+                                   family="HiraKakuProN-W3"),
+         plot.subtitle = element_text(size = 13)) +
+   labs(x = NULL, y = expression(gamma))
+```
+
+
+```{r}
+gamma_terms_2 %>%
+   select(topic, gamma, terms)
+```
+
+```{r}
+td_gamma_2 %>% filter(document == "ルームランプがつかない")
+td_gamma_2 %>% filter(document == "急ブレーキ気味にブレーキをかけると後ろから変な音(コトコト、カラカラ)がする")
+```
+
+
+
+
+
+### K = {25, 30, 50, 80}
+
+```{r}
+plan(multiprocess)
+
+set.seed(1234)
+st <- Sys.time()
+model_k_25_80 <- 
+   data_frame(K = c(25, 30, 50, 80)) %>%
+   mutate(topic_model = future_map(K, ~stm(res_token_s, K = .,
+                                           verbose = FALSE)))
+print(Sys.time() - st)
+
+save(model_k_25_80, file = "model_25_to_80.Rdata")
+```
+
+
+```{r}
+k_result_25_80 <- 
+   model_k_25_80 %>%
+   mutate(exclusivity = map(topic_model, exclusivity),
+          semantic_coherence = map(topic_model, semanticCoherence, res_token_s),
+          eval_heldout = map(topic_model, eval.heldout, heldout$missing),
+          residual = map(topic_model, checkResiduals, res_token_s),
+          bound =  map_dbl(topic_model, function(x) max(x$convergence$bound)),
+          lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
+          lbound = bound + lfact,
+          iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
+k_result_25_80
+k_result_25_80 %>%
+   transmute(K,
+             Lower_Bound = lbound,
+             Residuals = map_dbl(residual, "dispersion"),
+             Semantic_Coherence = map_dbl(semantic_coherence, mean),
+             Heldout_Likelihood = map_dbl(eval_heldout, "expected.heldout")) %>%
+   gather(Metric, Value, -K) %>%
+   ggplot(aes(K, Value, color = Metric)) +
+   geom_line(size = 1.5, alpha = 0.7, show.legend = FALSE) +
+   facet_wrap(~Metric, scales = "free_y") +
+   labs(x = "K (number of topics)",
+        y = NULL,
+        title = "Model diagnostics by number of topics",
+        subtitle = "These diagnostics indicate that a good number of topics would be around 60")
+```
+
+
+
+```{r}
+k_result_25_80 %>%
+   select(K, exclusivity, semantic_coherence) %>%
+   # filter(K %in% c(20, 60, 100)) %>%
+   unnest() %>%
+   mutate(K = as.factor(K)) %>%
+   ggplot(aes(semantic_coherence, exclusivity, color = K)) +
+   geom_point(size = 2, alpha = 0.7) +
+   labs(x = "Semantic coherence",
+        y = "Exclusivity",
+        title = "Comparing exclusivity and semantic coherence",
+        subtitle = "Models with fewer topics have higher semantic coherence for more topics, but lower exclusivity")
+```
+
+Pick best 1
+
+```{r}
+tm3 <- 
+   k_result_25_80 %>% 
+   filter(K == 25) %>% 
+   pull(topic_model) %>% 
+   .[[1]]
+td_beta_3 <- tidy(tm3)
+td_gamma_3 <- tidy(tm3, matrix = "gamma", document_names = dat$text)
+top_terms_3 <- 
+   td_beta_3 %>%
+   arrange(beta) %>%
+   group_by(topic) %>%
+   top_n(7, beta) %>%
+   arrange(-beta) %>%
+   select(topic, term) %>%
+   summarise(terms = list(term)) %>%
+   mutate(terms = map(terms, paste, collapse = ", ")) %>% 
+   unnest()
+
+gamma_terms_3 <- 
+   td_gamma_3 %>%
+   group_by(topic) %>%
+   summarise(gamma = mean(gamma)) %>%
+   arrange(desc(gamma)) %>%
+   left_join(top_terms_3, by = "topic") %>%
+   mutate(topic = paste0("Topic ", topic),
+          topic = reorder(topic, gamma))
+
+gamma_terms_3 %>%
+   top_n(30, gamma) %>%
+   ggplot(aes(topic, gamma, label = terms, fill = topic)) +
+   geom_col(show.legend = FALSE) +
+   geom_text(hjust = 0, nudge_y = 0.0005, size = 3,
+             family = "HiraKakuProN-W3") +
+   coord_flip() +
+   # scale_y_continuous(expand = c(0,0),
+   #                    limits = c(0, 0.09),
+   #                    labels = percent_format()) +
+   theme_tufte(base_family = "HiraKakuProN-W3", ticks = FALSE) +
+   theme(plot.title = element_text(size = 16,
+                                   family="HiraKakuProN-W3"),
+         plot.subtitle = element_text(size = 13)) +
+   labs(x = NULL, y = expression(gamma))
+```
+
+
+```{r}
+gamma_terms_3 %>%
+   select(topic, gamma, terms)
+```
+
+```{r}
+td_gamma_3 %>% filter(document == "ルームランプがつかない")
+td_gamma_3 %>% filter(document == "急ブレーキ気味にブレーキをかけると後ろから変な音(コトコト、カラカラ)がする")
+```
+
+
+
+
+```{r}
+dat_12 <- 
+   td_gamma_3 %>% 
+   spread(topic, gamma) %>% 
+   mutate(topic_num = apply(.[, -1], 1, which.max)) %>% 
+   filter(topic_num == 12) %>% 
+   select(document)
+
+```
+
+```{r}
+dat_mcb_12 <- 
+   dat_12 %>% 
+   as.data.frame() %>% 
+   RMeCabDF("document", 1)
+
+mcb_out_12 <- purrr::pmap_df(list(nv = dat_mcb_12, id = 1:length(dat_mcb_12)),
+                            function(nv, id) {
+                               tibble(id = id, word = nv, type = names(nv))
+                            })
+mcb_out_12
+```
+
+
+```{r}
+pos_words_12 <- 
+   mcb_out_12 %>% 
+   filter(type %in% c("名詞", "動詞", "助動詞", "接頭詞", "副詞")) %>% 
+   select(id, word)
+
+res_token_12 <- 
+   pos_words_12 %>% 
+   filter(!str_detect(word, "[0-9]+")) %>%
+   filter(!str_detect(word, "[a-z]+")) %>%
+   filter(!str_detect(word, "^[ぁ-んァ-ヶ]$")) %>%
+   add_count(word)
+
+tmp <- unique(res_token_12 %>% select(-id))
+tmp
+```
+
+```{r}
+res_token_sel_12 <- 
+   res_token_12 %>% 
+   filter(n > 19) %>%
+   select(-n)
+
+res_token_sel_12
+```
+
+```{r}
+res_token_s_12 <- 
+   res_token_sel_12 %>%
+   count(id, word) %>%
+   cast_sparse(id, word, n)
+```
+
+
+### K = {4, 5, 6, 7, 8}
+
+```{r}
+plan(multiprocess)
+
+set.seed(1234)
+st <- Sys.time()
+model_k_12 <- 
+   data_frame(K = c(4, 5, 6, 7, 8)) %>%
+   mutate(topic_model = future_map(K, ~stm(res_token_s, K = .,
+                                           verbose = FALSE)))
+print(Sys.time() - st)
+save(model_k_12, file = "model_t12_4_to_8.Rdata")
+```
+
+
+#### 3. トピックを細かく分けてから階層化する
+
+
+
+
