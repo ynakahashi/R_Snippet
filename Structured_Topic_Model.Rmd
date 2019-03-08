@@ -10,17 +10,17 @@ output: html_document
 [contents:]
 
 ### 背景
-- 前職での経験
+- 知人より
+- 多めのトピックを指定してからまとめ上げる
 
 ### 概要
 1. テキストデータを取得する
    - コーパスを取ってくる
    - 前処理
-2. 階層的にトピックモデルを作る
-   - 大きく区分する（ニュースソースの数？）
-   - それぞれを更に区分する
-3. トピックを細かく分けてから階層化する
-   - 細かく分ける
+2. トピックを細かく分ける
+   - いろいろなトピック数で試す
+   - なるべく細かく分ける
+3. 階層化する
    - 階層クラスタリングにかける
 
 
@@ -88,7 +88,11 @@ dat <-
 ```
 
 
-#### 2. 階層的にトピックモデルを作る
+#### 2. トピックを細かく分ける
+
+https://juliasilge.com/blog/evaluating-stm/
+
+
 日本語はこちらを参照
 https://www.slideshare.net/kashitan/tidytextrmecab-112565921
 
@@ -156,7 +160,7 @@ res_token_s <-
 ```
 
 
-### K = {6, 7, 8, 9, 10, 11, 12}
+色々なトピック数で試す
 
 ```{r}
 plan(multiprocess)
@@ -166,8 +170,8 @@ st <- Sys.time()
 model_k <- 
    # data_frame(K = c(30, 50, 100)) %>%
    # data_frame(K = c(30, 50, 100)) %>%
-   data_frame(K = c(6, 7)) %>%
-   # data_frame(K = c(6, 7, 8, 9, 10, 11, 12)) %>%
+   # data_frame(K = c(6, 7)) %>%
+   data_frame(K = c(5, 7, 9, 13, 20, 30, 50, 75, 100)) %>%
    mutate(topic_model = future_map(K, ~stm(res_token_s, K = .,
                                            verbose = FALSE)))
 print(Sys.time() - st)
@@ -204,9 +208,9 @@ k_result %>%
    facet_wrap(~Metric, scales = "free_y") +
    labs(x = "K (number of topics)",
         y = NULL,
-        title = "Model diagnostics by number of topics",
-        subtitle = "These diagnostics indicate that a good number of topics would be around 60")
+        title = "Model diagnostics by number of topics")
 ```
+
 
 
 
@@ -220,8 +224,7 @@ k_result %>%
    geom_point(size = 2, alpha = 0.7) +
    labs(x = "Semantic coherence",
         y = "Exclusivity",
-        title = "Comparing exclusivity and semantic coherence",
-        subtitle = "Models with fewer topics have higher semantic coherence for more topics, but lower exclusivity")
+        title = "Comparing exclusivity and semantic coherence")
 ```
 
 
@@ -624,7 +627,7 @@ save(model_k_12, file = "model_t12_4_to_8.Rdata")
 ```
 
 
-#### 3. トピックを細かく分けてから階層化する
+#### 3. 階層化する
 
 
 
