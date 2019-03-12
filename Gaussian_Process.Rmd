@@ -5,24 +5,27 @@ date: "2019/3/12"
 output: html_document
 ---
 
-## 「ガウス過程と機械学習」の作図を追いかける
+## 「ガウス過程と機械学習」第3章のグラフ（一部）を作図する
 
-### 第3章
-#### 図3.8
-先に必要な関数を定義しておく
+いま「ガウス過程と機械学習」を読んでいるのですが、第3章のグラフが非常に面白かったので自分でも作図してみたところちょっと腹落ちするものがありました。せっかくなので記事にしておきます。
+
+今回グラフを作成したのは図3.7と3.8（P69、70）の2つです。順番は前後してしまうのですが、図3.8から作図します。まずは必要な関数を定義しておきましょう。本にしたがい、共分散行列の`theta1`と`theta2`はともに1にしてあります。
+
 ```{r}
-## Generate x
+## 1~4までの数列を適当な刻み幅で生成する
 generate_vector <- function(by, from = 1, to = 4) seq(by, from = from, to = to)
 
-## Get covariance matrix
+## xからRBFカーネルを使って共分散行列を作成する
 get_cov_mat <- function(x, theta1 = 1, theta2 = 1) {
    vec <- x
    theta1 * exp(-(apply(as.matrix(x), 1, function(vec) x-vec))^2/theta2)
 } 
 ```
 
+上記の関数を使って1から4までの数列`x`を生成し、その共分散行列`K`および`y`を生成してプロットを描く関数を以下のように定義します。なるべく本のグラフと近づけるために、共分散行列のヒートマップは`corrplot`パッケージの`corrplot`関数を使い、`method = "shade"`を指定しました。
+
 ```{r}
-## Generate y and plot
+## xからKとyを生成し、そのプロットを描く
 gen_y_plot <- function(by) {
    
    x <- generate_vector(by)
@@ -34,13 +37,21 @@ gen_y_plot <- function(by) {
    corrplot::corrplot(K, method = "shade")
 
 }
+```
 
+数列の刻み幅を変えながらいくつかプロットしてみます。
+
+```{r}
 set.seed(123)
 gen_y_plot(1)
 gen_y_plot(0.5)
 gen_y_plot(0.2)
 gen_y_plot(0.1)
 ```
+
+本にある通り、刻み幅を小さくすることで順に滑らかな曲線になっていくのがよくわかります。
+
+続いて図3.7を作成します。先ほどとほぼ同じです。
 
 ```{r}
 gen_x_plot <- function(by) {
@@ -50,9 +61,13 @@ gen_x_plot <- function(by) {
    y <- MASS::mvrnorm(n = 1, mu = mu, Sigma = K)
    plot(x, y, type = "l", ylim = c(-4, 4))
 }
+```
 
+`plot`を重ねるために`par(new = T)`を使っているのですが、一回目だけは作図を0から始める必要があるので処理を分けています。もっと良い方法がある気がしていますが、ひとまず欲しいグラフは得られたので良しとします。
+
+```{r}
 set.seed(123)
-for (i in 1:5) {
+for (i in 1:4) {
    if(i == 1) {
       gen_x_plot(0.05) 
       next
@@ -62,3 +77,5 @@ for (i in 1:5) {
 }
 ```
 
+
+自分で書いてみると理解できているかの確認になりますし、パラメータを変えたときの挙動を見ることで理解が深まりますので本当にオススメです。この後もなるべく自分で作図してみようと思います。
