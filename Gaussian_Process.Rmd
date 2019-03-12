@@ -1,0 +1,64 @@
+---
+title: "Gaussian Process"
+author: "ynakahashi"
+date: "2019/3/12"
+output: html_document
+---
+
+## 「ガウス過程と機械学習」の作図を追いかける
+
+### 第3章
+#### 図3.8
+先に必要な関数を定義しておく
+```{r}
+## Generate x
+generate_vector <- function(by, from = 1, to = 4) seq(by, from = from, to = to)
+
+## Get covariance matrix
+get_cov_mat <- function(x, theta1 = 1, theta2 = 1) {
+   vec <- x
+   theta1 * exp(-(apply(as.matrix(x), 1, function(vec) x-vec))^2/theta2)
+} 
+```
+
+```{r}
+## Generate y and plot
+gen_y_plot <- function(by) {
+   
+   x <- generate_vector(by)
+   K <- get_cov_mat(x)
+   mu <- rep(0, length(x))
+   y <- MASS::mvrnorm(n = 1, mu = mu, Sigma = K)
+   par(mfcol = c(1, 2))
+   plot(x, y, xlim = c(0, 5))
+   corrplot::corrplot(K, method = "shade")
+
+}
+
+set.seed(123)
+gen_y_plot(1)
+gen_y_plot(0.5)
+gen_y_plot(0.2)
+gen_y_plot(0.1)
+```
+
+```{r}
+gen_x_plot <- function(by) {
+   x <- generate_vector(by, -4, 4)
+   K <- get_cov_mat(x)
+   mu <- rep(0, length(x))
+   y <- MASS::mvrnorm(n = 1, mu = mu, Sigma = K)
+   plot(x, y, type = "l", ylim = c(-4, 4))
+}
+
+set.seed(123)
+for (i in 1:5) {
+   if(i == 1) {
+      gen_x_plot(0.05) 
+      next
+   }
+   par(new = T)
+   gen_x_plot(0.05)
+}
+```
+
