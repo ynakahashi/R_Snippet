@@ -18,7 +18,7 @@ generate_vector <- function(by, from = 1, to = 4) seq(by, from = from, to = to)
 ## xからRBFカーネルを使って共分散行列を作成する
 get_cov_mat <- function(x, theta1 = 1, theta2 = 1) {
    vec <- x
-   theta1 * exp(-(apply(as.matrix(x), 1, function(vec) x-vec))^2/theta2)
+   theta1 * exp(-(apply(as.matrix(x), 1, function(x) x-vec))^2/theta2)
 } 
 ```
 
