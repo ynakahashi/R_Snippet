@@ -7,29 +7,36 @@ output: html_document
 
 ## 「ガウス過程と機械学習」第3章のグラフ（一部）を作図する②
 
-続き
+前回の記事の続きです。
+
+
+
+今回は図3.9と3.11（P71と75）を作成してみます。`generate_vector`はそのままですが、図3.9は二次元平面なので`get_cov_mat`は`x2`を考慮できるように修正しました。また`apply`についてですが、この書き方なら返り値は行ベクトルだろうとすっかり思い込んでいたら列ベクトルだったので、最後に`t()`で転置しています。その他、`theta1`と`exp`も`apply`の中に入れました。
 
 ```{r}
 ## 数列を適当な刻み幅で生成する
 generate_vector <- function(by, from = 1, to = 4) seq(by, from = from, to = to)
+
+## x1とx2からRBFカーネルを使って共分散行列を作成する
+get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   t(apply(as.matrix(x1), 1, function(x) theta1 * exp(-(x-x2)^2/theta2)))
+}
 ```
 
+中身を見てみましょう。
 
 ```{r}
-x1 <- generate_vectors(by = 0.5, from = 1, to = 4)
-x2 <- generate_vectors(by = 0.5, from = 1, to = 4)
-
-get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
-   theta1 * exp(-apply(as.matrix(x1), 1, function(x) (x-x2)^2/theta2))
-}
-
+x1 <- generate_vector(by = 0.5, from = 1, to = 4)
+x2 <- generate_vector(by = 0.5, from = 1, to = 4)
 K <- get_cov_mat(x1, x2)
 K
 ```
 
+これだけだと合っているのか不安だったので素直に`for`で書いてみた結果と比較してみましょう。
 
 ```{r}
-n_row <- n_col <- length(x1)
+n_row <- length(x1)
+n_col <- length(x2)
 tmp_mat <- matrix(0, nrow = n_row, ncol = n_col)
 theta1 <- theta2 <- 1
 for (i in 1:n_row) {
@@ -40,35 +47,83 @@ for (i in 1:n_row) {
 tmp_mat
 ```
 
+合っています。いくつか条件を変えながら試して同じ数値が得られたので、多分大丈夫なはずです。
+
 ```{r}
-corrplot::corrplot(K, method = "shade")
+# corrplot::corrplot(K, method = "shade")
 ```
 
-
-
+ではこの共分散行列からサンプリングしてみます。まずは1回サンプリングしてみましょう。
 
 ```{r}
-# set.seed(123)
-n <- 2
+set.seed(123)
+n <- 1
 mu <- rep(0, n_row)
-y <- MASS::mvrnorm(n = 2, mu = mu, Sigma = K)
-z <- outer(y[1,], y[2,])
+y1 <- MASS::mvrnorm(n = n, mu = mu, Sigma = K)
+```
+
+```{r}
+y1
+```
+
+サンプリングごとに`n_row`点のデータ（この場合は7点）が得られますが、このデータはそれぞれが独立ではなく、`get_cov_mat`で生成した共分散`K`にしたがっているはずです。`K`は隣接する二点間で`0.77`、一つ飛ばすと`0.36`程度の相関となるような関係性でした。数値を見ても何となく隣同士は似ていて、少し飛ばすと離れているように見えますね。
+
+ちょっと確かめてみましょう。同じようなベクトルを大量に生成して相関を取ったらどうなるでしょうか。
+
+```{r}
+set.seed(123)
+n_rep <- 1000
+tmp <- MASS::mvrnorm(n = n_rep, mu = mu, Sigma = K)
+```
+
+こんな感じのデータが得られると思います。
+
+```{r}
+head(tmp)
+```
+
+相関を見てみると：
+
+```{r}
+cor(tmp)
+```
+
+合ってる！良さそうですね。
+
+では改めて二回目のサンプリングを行います。
+
+```{r}
+set.seed(456)
+y2 <- MASS::mvrnorm(n = n, mu = mu, Sigma = K)
+```
+
+ここで`y1`と`y2`は独立のサンプリングなので、図3.9におけるz方向の値はそれらの積で良いと思います（が、ここはかなり悩んだところなので正直に言えば自信ありません。間違っていたらご指摘ください）。`outer`を取ってプロットしてみましょう。
+
+```{r}
+z <- outer(y1, y2)
 persp(x1, x2, z, theta = 320, phi = 20, expand = 0.4, border = "gray",
       shade = 0.1)
 ```
 
 
+ちょっとカクカクしていますが、何となく良さそうです。ちなみに`persp`の引数ですが、
 
+ - `theta`や`phi` → グラフをどの角度から見るか
+ - `expand` →  グラフを縦軸方向に圧縮する比率
+ - `border`や`shade` → 二次元曲面の色に関する指定
+
+となっています。この辺はお好みで。
+
+もう少し図3.9に近づける努力をしてみます。下記を参考に色を変えつつ関数にしました。
 
 https://stackoverflow.com/questions/10357002/create-3d-plot-colored-according-to-the-z-axis?rq=1
 
-
 ```{r}
-gen_2dim_plot <- function(by, from = 1, to = 4, n = 2) {
+gen_2dim_plot <- function(by, from = 1, to = 4, n = 2, theta1 = 1, theta2 = 1) {
    
-   x1 <- generate_vectors(by = by, from = from, to = to)
-   x2 <- generate_vectors(by = by, from = from, to = to)
-   K <- get_cov_mat_02(x1, x2)
+   x1 <- generate_vector(by = by, from = from, to = to)
+   x2 <- generate_vector(by = by, from = from, to = to)
+   K <- get_cov_mat(x1, x2, theta1 = theta1, theta2 = theta2)
 
    n_row <- length(x1)
    mu <- rep(0, n_row)
@@ -86,88 +141,84 @@ gen_2dim_plot <- function(by, from = 1, to = 4, n = 2) {
 }
 ```
 
-
+どうでしょう。先ほどはややカクカクしていたので、刻み幅を狭くしてみます。
 
 ```{r}
-gen_2dim_plot(0.05, from = 0, to = 1)
+set.seed(123)
+gen_2dim_plot(0.02, from = 0, to = 1)
 ```
 
+良さそうですね。ちょっとパラメータを色々と変えてみましょう。
 
 ```{r}
-gen_2dim_plot <- function(by, from = 1, to = 4, n = 2, ...) {
-   
-   x1 <- generate_vectors(by = by, from = from, to = to)
-   x2 <- generate_vectors(by = by, from = from, to = to)
-   K <- get_cov_mat_02(x1, x2, theta1 = theta1, theta2 = theta2)
-   
-   n_row <- length(x1)
-   mu <- rep(0, n_row)
-   y <- MASS::mvrnorm(n = n, mu = mu, Sigma = K)
-   z <- outer(y[1,], y[2,])
-   
-   col.pal <- colorRampPalette(rev(rainbow(5)))
-   colors <- col.pal(100)
-   z.facet.center <- (z[-1, -1] + z[-1, -ncol(z)] + z[-nrow(z), -1] + z[-nrow(z), -ncol(z)])/4
-   z.facet.range <- cut(z.facet.center, 100)
-
-   persp(x1, x2, z,
-         theta = 320, phi = 20, expand = 0.4, border = "gray",
-         shade = 0.1, col = colors[z.facet.range])
-}
+set.seed(123)
+gen_2dim_plot(0.05, from = 0, to = 4, theta1 = 5, theta2 = 1)
 ```
 
 ```{r}
-gen_2dim_plot(0.05, from = 0, to = 4, theta1 = 10, theta2 = 1)
+set.seed(456)
+gen_2dim_plot(0.05, from = 0, to = 4, theta1 = 1, theta2 = 0.5)
 ```
 
-
-
+もちろんプロットごとにサンプリングが行われるので、同じパラメータであっても色々な曲面が生成され、こんなにも表現力があるのかと驚かされます。
 
 ```{r}
-return_h <- function(h) {
-   H <- abs(h)
-   x <- seq(-H, H, 1/H)
-   h <- sign(x) * x^2
-   return(h)
-}
-
-return_h(5)
-
+# return_h <- function(h) {
+#    H <- abs(h)
+#    x <- seq(-H, H, 1/H)
+#    h <- sign(x) * x^2
+#    return(h)
+# }
+# return_h(5)
 ```
-
-
 
 ---
 
-カーネルを定義
-引数の渡し方をもっと工夫したい
+続いて図3.11に挑戦してみます。ここでは様々なカーネルを当てはめるので、各カーネルを定義します。なお`prd_knl`については`theta2`の数値を`0.5`にしましたが、この理由については後述します。
 
 ```{r}
+## 線形カーネル
 lin_knl <- function(x1, x2) {
-   outer(x1, x2)
+   outer(x1, x2) + 1
 }
 
+## RBFカーネル
 rbf_knl <- function(x1, x2, theta1 = 1, theta2 = 1) {
-   theta1 * exp(-apply(as.matrix(x1), 1, function(x) (x-x2)^2/theta2))
+   t(apply(as.matrix(x1), 1, function(x) theta1 * exp(-(x-x2)^2/theta2)))
 }
 
+## 指数カーネル
 exp_knl <- function(x1, x2, theta = 1) {
    exp(-apply(as.matrix(x1), 1, function(x) abs(x-x2)/theta1))
 }
 
+## 周期カーネル
 prd_knl <- function(x1, x2, theta1 = 1, theta2 = 0.5) {
    exp(theta1 * cos(apply(as.matrix(x1), 1, function(x) abs(x-x2)/theta2)))
 }
+```
 
+要はこれらを順次プロットすれば良いと思うのですが、どうせなら`get_cov_mat`の引数にカーネル名を追加して、総称関数のようにしたいなと思い、以下のように書いてみました。
+
+```{r}
 get_cov_mat <- function(kernel, x1, x2) {
    eval(call(kernel, x1 = x1, x2 = x2))
 }
-
 ```
 
+最初の`K`と同じものが得られていると思います。
+
 ```{r}
-x1 <- generate_vectors(by = 0.1, from = -4, to = 4)
-x2 <- generate_vectors(by = 0.1, from = -4, to = 4)
+get_cov_mat("rbf_knl", x1, x2)
+```
+
+本当は各カーネルで`theta1`と`theta2`の指定が異なるので`get_cov_mat`の引数に`...`を追加したかったのですが、うまく行きませんでした。この辺はもう少し`R`そのものに対する知識が必要ですね。
+
+改めて`x1`と`x2`を生成し、各カーネルによる共分散行列を作成しますが、どんな共分散が得られるのかをヒートマップで見てみましょう。ちょっと直感に合わないかもしれませんが、黄色いほうが値が大きいことを示します。
+
+```{r}
+x1 <- generate_vector(by = 0.1, from = -4, to = 4)
+x2 <- generate_vector(by = 0.1, from = -4, to = 4)
 
 heatmap(get_cov_mat("lin_knl", x1, x2), Rowv = NA, Colv = NA, revC = T)
 heatmap(get_cov_mat("rbf_knl", x1, x2), Rowv = NA, Colv = NA, revC = T)
@@ -175,6 +226,21 @@ heatmap(get_cov_mat("exp_knl", x1, x2), Rowv = NA, Colv = NA, revC = T)
 heatmap(get_cov_mat("prd_knl", x1, x2), Rowv = NA, Colv = NA, revC = T)
 ```
 
+
+基本的には対角上に黄色が集まるのですが、周期カーネルはちょっと面白いヒートマップになっていますね！このような共分散行列になるのは、`X1`と`X2`の値が離れていてもある周期に当てはまる距離であればカーネルの値は大きくなるためです（詳しくは本を確認してください）。
+
+先ほど周期カーネルを定義したときに`theta2`を`0.5`としたのは、`1`だとこの周期が少し大きすぎてあまり面白くなかったためです。見てみましょう。
+
+```{r}
+prd_knl_1.0 <- function(x1, x2, theta1 = 1, theta2 = 1.0) {
+   exp(theta1 * cos(apply(as.matrix(x1), 1, function(x) abs(x-x2)/theta2)))
+}
+heatmap(get_cov_mat("prd_knl_1.0", x1, x2), Rowv = NA, Colv = NA, revC = T)
+```
+
+一応周期が表現されてはいるのですが、この程度だとこの後のプロットがうまく行きませんでした。
+
+ではこの`get_cov_mat`を使って`y`をサンプリングします。以下のような関数を作っておけば便利です。
 
 ```{r}
 generate_y <- function(kernel, x1, x2, n = 1) {
@@ -185,12 +251,15 @@ generate_y <- function(kernel, x1, x2, n = 1) {
 }
 ```
 
-
-
+図3.11に合わせて4回サンプリングし、その曲線をプロットします。
 
 ```{r}
-y <- generate_y("lin_knl", x1, x2, n = 5)
-for (i in 1:5) {
+n <- 4
+par(mfrow = c(2, 2))
+
+## 線形カーネル
+y <- generate_y("lin_knl", x1, x2, n = n)
+for (i in 1:n) {
    if(i == 1) {
       plot(x1, y[i, ], type = "l", ylim = c(-4, 4), ylab = "f(x)",
            xlab = "Linear Kernel", col = i)
@@ -200,12 +269,10 @@ for (i in 1:5) {
    plot(x1, y[i, ], type = "l", ylim = c(-4, 4), ylab = "",
         xlab = "", col = i)
 }
-```
 
-
-```{r}
-y <- generate_y("rbf_knl", x1, x2, n = 5)
-for (i in 1:5) {
+## RBFカーネル
+y <- generate_y("rbf_knl", x1, x2, n = n)
+for (i in 1:n) {
    if(i == 1) {
       plot(x1, y[i, ], type = "l", ylim = c(-4, 4), ylab = "f(x)",
            xlab = "RBF Kernel", col = i)
@@ -216,11 +283,9 @@ for (i in 1:5) {
         xlab = "", col = i)
 }
 
-```
-
-```{r}
-y <- generate_y("exp_knl", x1, x2, n = 5)
-for (i in 1:5) {
+## 指数カーネル
+y <- generate_y("exp_knl", x1, x2, n = n)
+for (i in 1:n) {
    if(i == 1) {
       plot(x1, y[i, ], type = "l", ylim = c(-4, 4), ylab = "f(x)",
            xlab = "Exponential Kernel", col = i)
@@ -230,13 +295,10 @@ for (i in 1:5) {
    plot(x1, y[i, ], type = "l", ylim = c(-4, 4), ylab = "",
         xlab = "", col = i)
 }
-```
 
-
-
-```{r}
-y <- generate_y("prd_knl", x1, x2, n = 5)
-for (i in 1:5) {
+## 周期カーネル
+y <- generate_y("prd_knl", x1, x2, n = n)
+for (i in 1:n) {
    if(i == 1) {
       plot(x1, y[i, ], type = "l", ylim = c(-4, 4), ylab = "f(x)",
            xlab = "Periodic Kernel", col = i)
@@ -249,5 +311,7 @@ for (i in 1:5) {
 ```
 
 
+出来ました！周期カーネルを見てみると、ちゃんと周期的な曲線が色々生成されているのがよくわかります。
 
+今回はここまです。色々と試行錯誤しながらなので間違いがあるかもしれませんが、その際はご指摘頂けると嬉しいです。
 
