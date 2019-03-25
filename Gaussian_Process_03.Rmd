@@ -13,14 +13,15 @@ output: html_document
 今回は図3.xxと3.yyに挑戦します。データはサポートサイト(http://chasen.org/~daiti-m/gpbook/data/gpr.dat)から取得しました。
 
 ```{r}
-dat <- read.table("http://chasen.org/~daiti-m/gpbook/data/gpr.dat", sep = "\t")
+dat <- read.table("http://chasen.org/~daiti-m/gpbook/data/gpr.dat", sep = "\t",
+                  col.names = c("x", "y"))
 train <- head(dat, 5)
 ```
 
 データをプロットしてみます。
 
 ```{r}
-plot(train, ylim = c(-1, 3), xlab = "x", pch = "x")
+plot(train, ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
 ```
 
 このデータから前回定義したRBFカーネルを使って`x`の共分散行列を作成してみましょう。
@@ -36,30 +37,31 @@ get_cov_mat <- function(kernel, x1, x2) {
    eval(call(kernel, x1 = x1, x2 = x2))
 }
 
-get_cov_mat("rbf_knl", train$V1, train$V1)
+get_cov_mat("rbf_knl", train$x, train$x)
 ```
 
 数字だとわかりにくいのでヒートマップを作成してみます。
 
 ```{r}
-tmp <- get_cov_mat("rbf_knl", train$V1, train$V1)
+tmp <- get_cov_mat("rbf_knl", train$x, train$x)
 heatmap(tmp, Rowv = NA, Colv = NA, revC = T)
 ```
 
-なんか色が変ですね。対角要素は同じ色になるはずなのですが。`gplots`の`heatmap.2`関数を使ってみます。
+なんか色が変ですね、対角要素は同じ色になるはずなのですが。`gplots`の`heatmap.2`関数を使ってみます。
 
 ```{r}
 library(gplots)
-heatmap.2(get_cov_mat("rbf_knl", dat2$V1, dat2$V1), Rowv = NA, Colv = NA, dendrogram = "none", trace = "none")
+heatmap.2(get_cov_mat("rbf_knl", train$x, train$x), Rowv = NA, Colv = NA, dendrogram = "none", 
+          trace = "none")
 ```
 
 こっちは良さそうですね。
 
 ```{r}
-K <- get_cov_mat("rbf_knl", dat2$V1, dat2$V1)
+K <- get_cov_mat("rbf_knl", train$x, train$x)
 
 n <- 1
-mu <- rep(0, nrow(dat))
+mu <- rep(0, nrow(train))
 ```
 
 ```{r}
@@ -70,16 +72,40 @@ plot(y, type = "l")
 
 良さそうです。
 
-何回かプロットしてみるとわかりますが、`y[1]`と`y[2]`および`y[7]`と`y[8]`の間には大きな差が生じやすい傾向にあります。ヒートマップを見るとわかりやすいのですが、これらは共分散が小さい（"似ていない"）ため、異なる値となりやすいんですね。そのため`y`のプロットも少し滑らかさに欠けるものとなっています。
+ところでこのグラフを何回かプロットしてみるとわかりますが、`y[1]`と`y[2]`および`y[4]`と`y[5]`の間には、他と比べて大きな差が生じやすい傾向にあります。ヒートマップを見るとわかりやすいのですが、これらは共分散が小さい（"似ていない"）ため、異なる値となりやすいんですね。そのため`y`のプロットも少し滑らかさに欠けるものとなっています。
 
 
+図3.18のアルゴリズムにしたがい、`y`の平均と分散を推定します。なお`theta1`、`theta2`および`theta3`はそれぞれ`1`、`0.4`、`0.1`とのことなので`K`を計算し直しました。
 
+```{r}
+test <- seq(-1, 4, 0.1)
+theta1 <- 1
+theta2 <- 0.4
+theta3 <- 0.1
+
+K <- rbf_knl(train$x, train$x, theta1 = theta1, theta2 = theta2)
+diag(K) <- diag(K) + theta3
+
+M <- length(test)
+N <- nrow(train)
+
+yy  <- solve(K) %*% train$y
+k   <- rbf_knl(train$x, test, theta1 = theta1, theta2 = theta2)
+s   <- rbf_knl(test, test, theta1 = theta1, theta2 = theta2)
+diag(s)   <- diag(s) + theta3
+Mu  <- t(k) %*% yy
+Var <- s - t(k) %*% solve(K) %*% k
+CI_u  <- Mu + 2 * sqrt(diag(Var))
+CI_l  <- Mu - 2 * sqrt(diag(Var))
+```
 
 
 ```{r}
-yy <- dat
+plot(train, xlim = c(-0.5, 4), ylim = c(-1, 3), type = "n")
+polygon(c(rev(test), test), c(CI_u, CI_l), col = 'gray', border = NA)
+points(train$x, train$y, xlim = c(-0.5, 4), ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
+lines(test, Mu, xlim = c(-0.5, 4), ylim = c(-1, 3), type = "l", ylab = "")
 ```
-
 
 
 
