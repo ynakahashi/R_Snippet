@@ -36,47 +36,45 @@ rbf_knl_old <- function(x1, x2, theta1 = 1, theta2 = 1) {
 
 ## ベクトルに対応するために修正
 rbf_knl <- function(x1, x2, theta1 = 1, theta2 = 1) {
-   theta1 * exp(-norm(x1 - x2, "2")/theta2)
+   theta1 * exp(-norm(x1 - x2, "2")^2/theta2)
 }
 ```
 
-ベクトル同士の距離を計算するために`norm`関数を使いました。
+ベクトル同士の距離を計算するために`norm`関数を使いました。ここでは距離としてL2ノルム（ユークリッド距離）を使用していますが、その後に2乗していることに注意してください。
 
-ベクトルでの入力に対応した代わりに共分散行列を一度に求めることができなくなってしまったので、`get_cov_mat`も以下のように定義し直します：
+上でベクトルでの入力に対応した代わりに共分散行列を一度に求めることができなくなってしまったので、`get_cov_mat`も以下のように定義し直します：
 
 ```{r}
-## カーネルの種類を与えて共分散行列を得る関数
-get_cov_mat_old <- function(kernel, x1, x2) {
-   eval(call(kernel, x1 = x1, x2 = x2))
-}
-
-## d次元のベクトルを要素とするx[n, d]について、x_iとx_jのカーネルを計算する
+## d次元のベクトルを要素とするx1[n_1, d]およびx2[n_2, d]について、x1_nとx2_n'の共分散を計算する
 get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
    ## matrixに変換
    x1 <- as.matrix(x1)
    x2 <- as.matrix(x2)
    
-   ## ベクトルの組み合わせを作成する
+   ## 行の組み合わせを作成する
    n <- nrow(x1)
-   d <- nrow(x2)
-   tmp <- cbind(kronecker(x1, matrix(1, n)), kronecker(matrix(1, n), x))
+   m <- nrow(x2)
+   d <- ncol(x1)
+   tmp <- cbind(kronecker(x1, matrix(1, m)), kronecker(matrix(1, n), x2))
    
    ret <- apply(tmp, 1, function(x, d, theta1, theta2) {
-      rbf_knl(x[(1:d)], x[(1:d)+d], theta1, theta2)
+      rbf_knl(x[(1:d)], x[(d+1):ncol(tmp)], theta1, theta2)
    }, d, theta1, theta2)
-   return(matrix(ret, n, n))
+   return(matrix(ret, n, m, byrow = T))
 }
 ```
 
 ここでは
 
- 1. `kronecker`関数を使い、元の行列`x`について全ての`i`行目と`j`行目の組み合わせを持つ`(n*n, 2*c)`のサイズとなる行列を新たに作成し（`tmp`）
+ 1. `kronecker`関数を使い、元の行列`x1`と`x2`について全ての行の組み合わせを持つ`(n*m, 2*d)`のサイズとなる行列を新たに作成し（`tmp`）
  1. 各行について、前半`d`個の要素を持つベクトルと後半`d`個のベクトルを抽出してカーネルを計算する（`ret`）
 
 という少しややこしい手順を踏んでいます。ここは本来なら
 
 ```{r}
-apply(x, 1, rbf_knl, x[1, ]) # 1行目だけでなく、各行を順に渡したい！
+x1 <- matrix(seq(0, 1, length.out = 15), 5, 3, byrow = T)
+x2 <- matrix(seq(1, 2, length.out = 12), 4, 3)
+apply(x1, 1, rbf_knl, x2[1, ]) # x2の1行目だけでなく、各行を順に渡したい！
 ```
 
 このような形で`apply`を使ってすっきり書きたいのですが、`apply`を二重で渡す方法がわからなかったため、一度すべての組み合わせを作成することにしました。
@@ -84,7 +82,7 @@ apply(x, 1, rbf_knl, x[1, ]) # 1行目だけでなく、各行を順に渡した
 ひとまずこれでサンプルデータの共分散行列を見てみましょう。
 
 ```{r}
-get_cov_mat(train$x)
+get_cov_mat(train$x, train$x)
 ```
 
 
@@ -107,7 +105,7 @@ K
 共分散行列が数字のままだと結果がわかりにくいのでヒートマップを作成してみます。
 
 ```{r}
-tmp <- get_cov_mat(train$x)
+tmp <- get_cov_mat(train$x, train$x)
 heatmap(tmp, Rowv = NA, Colv = NA, revC = T)
 ```
 
@@ -115,14 +113,14 @@ heatmap(tmp, Rowv = NA, Colv = NA, revC = T)
 
 ```{r}
 library(gplots)
-heatmap.2(get_cov_mat(train$x), Rowv = NA, Colv = NA, dendrogram = "none", 
+heatmap.2(get_cov_mat(train$x, train$x), Rowv = NA, Colv = NA, dendrogram = "none", 
           trace = "none")
 ```
 
 こっちは良さそうですね。
 
 ```{r}
-K <- get_cov_mat(train$x)
+K <- get_cov_mat(train$x, train$x)
 
 n <- 1
 mu <- rep(0, nrow(train))
@@ -150,13 +148,13 @@ M <- length(test)
 N <- nrow(train)
 
 ## 共分散行列を計算する
-K <- get_cov_mat(train$x, theta1 = theta1, theta2 = theta2)
+K <- get_cov_mat(train$x, train$x, theta1 = theta1, theta2 = theta2)
 ## 対角要素に誤差分散を加える
 diag(K) <- diag(K) + theta3
 
 yy  <- solve(K) %*% train$y
-k   <- rbf_knl(train$x, test, theta1 = theta1, theta2 = theta2)
-s   <- rbf_knl(test, test, theta1 = theta1, theta2 = theta2)
+k   <- get_cov_mat(train$x, test, theta1 = theta1, theta2 = theta2)
+s   <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
 diag(s)   <- diag(s) + theta3
 Mu  <- t(k) %*% yy
 Var <- s - t(k) %*% solve(K) %*% k
@@ -166,10 +164,10 @@ CI_l  <- Mu - 2 * sqrt(diag(Var))
 
 
 ```{r}
-plot(train, xlim = c(-0.5, 4), ylim = c(-1, 3), type = "n")
+plot(train, xlim = c(-0.5, 3.5), ylim = c(-1, 3), type = "n")
 polygon(c(rev(test), test), c(CI_u, CI_l), col = 'gray', border = NA)
-points(train$x, train$y, xlim = c(-0.5, 4), ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
-lines(test, Mu, xlim = c(-0.5, 4), ylim = c(-1, 3), type = "l", ylab = "")
+points(train$x, train$y, xlim = c(-0.5, 3.5), ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
+lines(test, Mu, xlim = c(-0.5, 3.5), ylim = c(-1, 3), type = "l", ylab = "")
 ```
 
 
