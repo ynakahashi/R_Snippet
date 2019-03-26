@@ -41,66 +41,88 @@ rbf_knl <- function(x1, x2, theta1 = 1, theta2 = 1) {
 ```
 
 ベクトル同士の距離を計算するために`norm`関数を使いました。
-ベクトルでの入力に対応するために`apply`を外してしまったので、`X`を
+
+ベクトルでの入力に対応した代わりに共分散行列を一度に求めることができなくなってしまったので、`get_cov_mat`も以下のように定義し直します：
 
 ```{r}
-## c次元のベクトルを要素とするxについて、xとx'のカーネルを計算する
-rbf_knl_mat <- function(x1, theta1 = 1, theta2 = 1) {
+## カーネルの種類を与えて共分散行列を得る関数
+get_cov_mat_old <- function(kernel, x1, x2) {
+   eval(call(kernel, x1 = x1, x2 = x2))
+}
+
+## d次元のベクトルを要素とするx[n, d]について、x_iとx_jのカーネルを計算する
+get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   ## matrixに変換
+   x1 <- as.matrix(x1)
+   x2 <- as.matrix(x2)
+   
    ## ベクトルの組み合わせを作成する
    n <- nrow(x1)
-   c <- ncol(x1)
-   tmp <- cbind(kronecker(x1, matrix(1, n)), kronecker(matrix(1, n), x1))
+   d <- nrow(x2)
+   tmp <- cbind(kronecker(x1, matrix(1, n)), kronecker(matrix(1, n), x))
    
-   ret <- apply(tmp, 1, function(x, c, theta1, theta2) {
-      rbf_knl(x[(1:c)], x[(1:c)+c], theta1, theta2)
-      }, c, theta1, theta2)
+   ret <- apply(tmp, 1, function(x, d, theta1, theta2) {
+      rbf_knl(x[(1:d)], x[(1:d)+d], theta1, theta2)
+   }, d, theta1, theta2)
    return(matrix(ret, n, n))
 }
 ```
 
+ここでは
+
+ 1. `kronecker`関数を使い、元の行列`x`について全ての`i`行目と`j`行目の組み合わせを持つ`(n*n, 2*c)`のサイズとなる行列を新たに作成し（`tmp`）
+ 1. 各行について、前半`d`個の要素を持つベクトルと後半`d`個のベクトルを抽出してカーネルを計算する（`ret`）
+
+という少しややこしい手順を踏んでいます。ここは本来なら
+
+```{r}
+apply(x, 1, rbf_knl, x[1, ]) # 1行目だけでなく、各行を順に渡したい！
+```
+
+このような形で`apply`を使ってすっきり書きたいのですが、`apply`を二重で渡す方法がわからなかったため、一度すべての組み合わせを作成することにしました。
+
+ひとまずこれでサンプルデータの共分散行列を見てみましょう。
+
+```{r}
+get_cov_mat(train$x)
+```
 
 
-
-
-
-
-
-それではこの関数でサンプルデータの`x`について共分散行列を作成するとどのようになるでしょうか。
+また、`for`を使って素直に書いた場合の結果と一致するかも確認しておきましょう：
 
 ```{r}
 n <- nrow(train)
 K <- matrix(0, n, n)
 for (i in 1:n) {
    for (j in 1:n) {
-      K[i, j] <- K[j, i] <- rbf_knl()
+      if (i > j) next
+      K[i, j] <- K[j, i] <- rbf_knl(train$x[i], train$x[j])
    }
 }
+K
 ```
 
+合っているようです。
 
-
-
-
-
-数字だとわかりにくいのでヒートマップを作成してみます。
+共分散行列が数字のままだと結果がわかりにくいのでヒートマップを作成してみます。
 
 ```{r}
-tmp <- get_cov_mat("rbf_knl", train$x, train$x)
+tmp <- get_cov_mat(train$x)
 heatmap(tmp, Rowv = NA, Colv = NA, revC = T)
 ```
 
-なんか色が変ですね、対角要素は同じ色になるはずなのですが。`gplots`の`heatmap.2`関数を使ってみます。
+おや、なんか色が変ですね、対角要素は同じ色になるはずなのですが。`gplots`の`heatmap.2`関数を使ってみます。
 
 ```{r}
 library(gplots)
-heatmap.2(get_cov_mat("rbf_knl", train$x, train$x), Rowv = NA, Colv = NA, dendrogram = "none", 
+heatmap.2(get_cov_mat(train$x), Rowv = NA, Colv = NA, dendrogram = "none", 
           trace = "none")
 ```
 
 こっちは良さそうですね。
 
 ```{r}
-K <- get_cov_mat("rbf_knl", train$x, train$x)
+K <- get_cov_mat(train$x)
 
 n <- 1
 mu <- rep(0, nrow(train))
@@ -117,19 +139,20 @@ plot(y, type = "l")
 ところでこのグラフを何回かプロットしてみるとわかりますが、`y[1]`と`y[2]`および`y[4]`と`y[5]`の間には、他と比べて大きな差が生じやすい傾向にあります。ヒートマップを見るとわかりやすいのですが、これらは共分散が小さい（"似ていない"）ため、異なる値となりやすいんですね。そのため`y`のプロットも少し滑らかさに欠けるものとなっています。
 
 
-図3.18のアルゴリズムにしたがい、`y`の平均と分散を推定します。なお`theta1`、`theta2`および`theta3`はそれぞれ`1`、`0.4`、`0.1`とのことなので`K`を計算し直しました。
+図3.17のアルゴリズムを参考に、`y`の平均と分散を推定します。なお`theta1`、`theta2`および`theta3`はそれぞれ`1`、`0.4`、`0.1`とのことなので`K`を計算し直しました。
 
 ```{r}
-test <- seq(-1, 4, 0.1)
+test <- seq(-1, 3.5, 0.05)
 theta1 <- 1
 theta2 <- 0.4
 theta3 <- 0.1
-
-K <- rbf_knl(train$x, train$x, theta1 = theta1, theta2 = theta2)
-diag(K) <- diag(K) + theta3
-
 M <- length(test)
 N <- nrow(train)
+
+## 共分散行列を計算する
+K <- get_cov_mat(train$x, theta1 = theta1, theta2 = theta2)
+## 対角要素に誤差分散を加える
+diag(K) <- diag(K) + theta3
 
 yy  <- solve(K) %*% train$y
 k   <- rbf_knl(train$x, test, theta1 = theta1, theta2 = theta2)
