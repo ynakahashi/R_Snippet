@@ -97,6 +97,9 @@ for (i in 1:n) {
       K[i, j] <- K[j, i] <- rbf_knl(train$x[i], train$x[j])
    }
 }
+```
+
+```{r}
 K
 ```
 
@@ -270,6 +273,8 @@ res_par_01 <-
    optim(par = optim(par = param, fn = L, x = train$x, y = train$y, 
                      control = list(fnscale = -1))$par,
          fn = L, x = train$x, y = train$y, control = list(fnscale = -1))
+```
+```{r}
 print(exp(res_par_01$par), digits = 3)
 L(res_par_01$par, train$x, train$y)
 ```
@@ -284,6 +289,8 @@ res_par_02 <-
    optim(par = optim(par = param, fn = L, x = train$x, y = train$y, 
                      control = list(fnscale = -1))$par,
          fn = L, x = train$x, y = train$y, control = list(fnscale = -1))
+```
+```{r}
 print(exp(res_par_02$par), digits = 3)
 L(res_par_02$par, train$x, train$y)
 ```
@@ -336,6 +343,8 @@ res_par_03 <-
    optim(par = optim(par = param, fn = L, x = dat$x, y = dat$y, 
                      control = list(fnscale = -1))$par,
          fn = L, x = dat$x, y = dat$y, control = list(fnscale = -1))
+```
+```{r}
 print(exp(res_par_03$par), digits = 3)
 L(res_par_03$par, dat$x, dat$y)
 ```
