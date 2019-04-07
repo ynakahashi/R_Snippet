@@ -1,0 +1,542 @@
+---
+title: "Gaussian Process 04"
+author: "ynakahashi"
+date: "2019/4/7"
+output: html_document
+---
+
+## 「ガウス過程と機械学習」第3章のグラフ（一部）を作図する④
+
+前回の記事の続きです。
+
+
+今回は図3.23と3.29に挑戦します。データは、陸上男子100Mについては[こちら](https://www.topendsports.com/sport/athletics/record-100m.htm)から該当する部分を取ってきました。また久保先生の緑本からのデータはサポートサイト(http://chasen.org/~daiti-m/gpbook/data/kubo.dat)から取得しました。
+
+まずは陸上男子100Mのデータから。一部データを除外してプロットしてみましょう。
+
+```{r}
+dat <- read.table("./Data/World_Record.dat", sep = "\t",
+                  col.names = c("name", "time", "date"))
+
+dat <- dat[-c(6, 17:21), -1]
+dat$date <- as.integer(gsub(".*, ", "", dat$date))
+colnames(dat) <- c("y", "x")
+plot(dat$x, dat$y, xlab = "year", ylab = "time", 
+     xlim = c(1960, 2020), ylim = c(9.5, 10.1), pch = 4, cex = 2)
+```
+
+ちょっと使っているデータが違っている様子ですが、このまま進めます。
+
+本にしがたい、Xおよびyを平均0、分散1にスケーリングします。`dat`は`data.frame`で持っておきたいので、事前にスケーリングのパラメータは別に取っておきましょう。
+
+
+```{r}
+dat <- scale(dat)
+scale_pars <- unlist(attributes(dat)[c("scaled:center", "scaled:scale")])
+dat <- as.data.frame(dat)
+```
+
+まずはこのデータに対してシンプルにRBFカーネルで推定してみます。前回の記事で定義した関数を色々使いまわすことにします。まずは`L`、これはハイパーパラメータを与えたときに対数尤度を返す関数でした。
+
+```{r}
+L <- function(param, x, y) {
+   # C <- -nrow(train)/2*log(2*pi)
+   C <- 0
+   K <- get_cov_mat_exp(x, x, theta1 = param[1], theta2 = param[2])
+   diag(K) <- diag(K) + exp(param[3])
+   
+   return(-log(det(K)) - t(as.matrix(y)) %*% solve(K) %*% as.matrix(y) + C)
+}
+```
+
+`L`の中で使われている`get_cov_mat_exp`も定義しましょう。これは共分散行列を得る関数です。
+
+```{r}
+get_cov_mat_exp <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   
+   ## matrixに変換
+   x1 <- as.matrix(x1)
+   x2 <- as.matrix(x2)
+   
+   ## 行の組み合わせを作成する
+   n <- nrow(x1)
+   m <- nrow(x2)
+   d <- ncol(x1)
+   tmp <- cbind(kronecker(x1, matrix(1, m)), kronecker(matrix(1, n), x2))
+   
+   ret <- apply(tmp, 1, function(x, d, theta1, theta2) {
+      rbf_knl_exp(x[(1:d)], x[(d+1):ncol(tmp)], theta1, theta2) # rbf_knl_expを使う
+   }, d, theta1, theta2)
+   return(matrix(ret, n, m, byrow = T))
+}
+```
+
+
+さらに`rbf_knl_exp`も使います。
+
+```{r}
+rbf_knl_exp <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   exp(theta1) * exp(-norm(x1 - x2, "2")^2/exp(theta2))
+}
+```
+
+
+上記の関数はパラメータ探索における効率化のためにパラメータは`log`を取ってから与えることを前提としていましたが、可視化用に元の関数も定義しておきましょう。
+
+```{r}
+get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   
+   ## matrixに変換
+   x1 <- as.matrix(x1)
+   x2 <- as.matrix(x2)
+   
+   ## 行の組み合わせを作成する
+   n <- nrow(x1)
+   m <- nrow(x2)
+   d <- ncol(x1)
+   tmp <- cbind(kronecker(x1, matrix(1, m)), kronecker(matrix(1, n), x2))
+   
+   ret <- apply(tmp, 1, function(x, d, theta1, theta2) {
+      rbf_knl(x[(1:d)], x[(d+1):ncol(tmp)], theta1, theta2)
+   }, d, theta1, theta2)
+   return(matrix(ret, n, m, byrow = T))
+}
+```
+
+```{r}
+rbf_knl <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   theta1 * exp(-norm(x1 - x2, "2")^2/theta2)
+}
+```
+
+
+
+ではこれらの関数を使い、今回のデータでハイパーパラメータの最適化を実行してみましょう。
+
+```{r}
+param <- c(1, 1, 1)
+res_par <- 
+   optim(par = optim(par = param, fn = L, x = dat$x, y = dat$y, 
+                     control = list(fnscale = -1))$par,
+         fn = L, x = dat$x, y = dat$y, control = list(fnscale = -1))
+```
+
+```{r}
+print(exp(res_par$par), digits = 3)
+L(res_par$par, dat$x, dat$y)
+```
+
+
+
+```{r}
+gen_gpreg_plot <- function(param, x, y) {
+
+   x <- x * scale_pars[4] + scale_pars[2]
+   y <- y * scale_pars[3] + scale_pars[1]
+   
+   
+   test <- seq(1960, 2020, 1)
+
+   theta1 <- exp(param[1])
+   theta2 <- exp(param[2])
+   theta3 <- exp(param[3])
+   
+   K       <- get_cov_mat(x, x, theta1 = theta1, theta2 = theta2)
+   diag(K) <- diag(K) + theta3
+   k       <- get_cov_mat(x, test, theta1 = theta1, theta2 = theta2)
+   s       <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
+   diag(s) <- diag(s) + theta3
+   Mu      <- t(k) %*% solve(K) %*% y
+   Var     <- s - t(k) %*% solve(K) %*% k
+   CI_u    <- Mu + 2 * sqrt(diag(Var))
+   CI_l    <- Mu - 2 * sqrt(diag(Var))
+   
+   plot(x, y, xlim = c(1960, 2020), ylim = c(9.5, 10.1), type = "n")
+   polygon(c(test, rev(test)), c(CI_u, rev(CI_l)), col = 'gray', border = NA)
+   points(x, y, xlim = c(1960, 2020), ylim = c(9.5, 10.1), xlab = "x", pch = 4, cex = 2)
+   lines(test, Mu, xlim = c(1960, 2020), ylim = c(9.5, 10.1), type = "l", ylab = "")
+
+}
+```
+
+
+
+```{r}
+gen_gpreg_plot(res_par$par, dat$x, dat$y)
+```
+
+
+
+```{r}
+book_par <- c(1.62, 0.44, 0.06)
+gen_gpreg_plot(book_par, dat$x, dat$y)
+```
+
+
+
+
+
+
+```{r}
+print(exp(res_par_03$par), digits = 3)
+L(res_par_03$par, dat$x, dat$y)
+```
+
+`theta1`が0.001ずれましたがパラメータとしてはうまく推定できているようです。ただし対数尤度はやっぱり一致しません。なぜだ。。。
+
+推定されたパラメータを使ってプロットを描いてみましょう（図3.20の(b)）。
+
+
+```{r}
+gen_gpreg_plot(res_par_03$par, dat$x, dat$y)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+本ではX軸の数値が書かれていませんが、多分これで合っています。
+
+このデータからRBFカーネルを使って`x`の共分散行列を作成しますが、前回定義したRBFカーネルは入力としてスカラを想定していました。しかし`x`はベクトルとなることもあるため、RBFカーネルを少し修正します。
+
+```{r}
+## 前回定義したRBFカーネル
+rbf_knl_old <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   t(apply(as.matrix(x1), 1, function(x) theta1 * exp(-(x-x2)^2/theta2)))
+}
+
+## ベクトルに対応するために修正
+rbf_knl <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   theta1 * exp(-norm(x1 - x2, "2")^2/theta2)
+}
+```
+
+ベクトル同士の距離を計算するために`norm`関数を使いました。ここでは距離としてL2ノルム（ユークリッド距離）を使用していますが、**その後に2乗している**ことに注意してください。
+
+ベクトルでの入力に対応した代わりに共分散行列を一度に求めることができなくなってしまったので、`get_cov_mat`も以下のように定義し直します：
+
+```{r}
+## d次元のベクトルを要素とするx1[n_1, d]およびx2[n_2, d]について、x1_nとx2_n'の共分散を計算する
+get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   ## matrixに変換
+   x1 <- as.matrix(x1)
+   x2 <- as.matrix(x2)
+   
+   ## 行の組み合わせを作成する
+   n <- nrow(x1)
+   m <- nrow(x2)
+   d <- ncol(x1)
+   tmp <- cbind(kronecker(x1, matrix(1, m)), kronecker(matrix(1, n), x2))
+   
+   ret <- apply(tmp, 1, function(x, d, theta1, theta2) {
+      rbf_knl(x[(1:d)], x[(d+1):ncol(tmp)], theta1, theta2)
+   }, d, theta1, theta2)
+   return(matrix(ret, n, m, byrow = T))
+}
+```
+
+ここでは
+
+ 1. `kronecker`関数を使い、元の行列`x1`と`x2`について全ての行の組み合わせを持つ`(n*m, 2*d)`のサイズとなる行列を新たに作成し（`tmp`）
+ 1. 各行について、前半`d`個の要素を持つベクトルと後半`d`個のベクトルを抽出してカーネルを計算する（`ret`）
+
+という少しややこしい手順を踏んでいます。ここは本来なら
+
+```{r}
+x1 <- matrix(seq(0, 1, length.out = 15), 5, 3, byrow = T)
+x2 <- matrix(seq(1, 2, length.out = 12), 4, 3)
+apply(x1, 1, rbf_knl, x2[1, ]) # x2の1行目だけでなく、各行を順に渡したい！
+```
+
+このような形で`apply`を使ってすっきり書きたいのですが、`apply`を二重で渡す方法がわからなかったため、一度すべての組み合わせを作成することにしました。
+
+ひとまずこれでサンプルデータの共分散行列を見てみましょう。
+
+```{r}
+get_cov_mat(train$x, train$x)
+```
+
+
+また、`for`を使って素直に書いた場合の結果と一致するかも確認しておきましょう：
+
+```{r}
+n <- nrow(train)
+K <- matrix(0, n, n)
+for (i in 1:n) {
+   for (j in 1:n) {
+      if (i > j) next
+      K[i, j] <- K[j, i] <- rbf_knl(train$x[i], train$x[j])
+   }
+}
+```
+
+```{r}
+K
+```
+
+合っているようです。
+
+共分散行列が数字のままだと結果がわかりにくいのでヒートマップを作成してみます。
+
+```{r}
+tmp <- get_cov_mat(train$x, train$x)
+heatmap(tmp, Rowv = NA, Colv = NA, revC = T)
+```
+
+おや、なんか色が変ですね、対角要素は同じ色になるはずなのですが。`gplots`の`heatmap.2`関数を使ってみます。
+
+```{r}
+library(gplots)
+heatmap.2(get_cov_mat(train$x, train$x), Rowv = NA, Colv = NA, dendrogram = "none", 
+          trace = "none")
+```
+
+こっちは良さそうですね。ではこのまま進めます。共分散行列を作成し、そこからデータをサンプリングしてみましょう：
+
+```{r}
+K <- get_cov_mat(train$x, train$x)
+n <- 1
+mu <- rep(0, nrow(train))
+
+set.seed(123)
+y <- MASS::mvrnorm(n = n, mu = mu, Sigma = K)
+plot(y, type = "l")
+```
+
+良さそうです。
+
+ところでこのグラフを何回かプロットしてみるとわかりますが、`y[1]`と`y[2]`および`y[4]`と`y[5]`の間には他と比べて大きな差が生じやすい傾向にあります。これは、`train$x`の数値が離れているため共分散が小さい（"似ていない"）ことを反映しているのだと思います。そのため`y`のプロットも少し滑らかさに欠けるものとなっています。
+
+図3.17のアルゴリズムを参考に、`y`の平均と分散を推定します。なお`theta1`、`theta2`および`theta3`はそれぞれ`1`、`0.4`、`0.1`とのことですが、作図の印象を図3.16に近づけるために`theta3`を`0.02`としました。
+
+```{r}
+test <- seq(-1, 3.5, 0.05)
+theta1 <- 1
+theta2 <- 0.4
+theta3 <- 0.02 # 本では0.1
+
+## x * xの共分散行列を計算する
+K <- get_cov_mat(train$x, train$x, theta1 = theta1, theta2 = theta2)
+
+## 対角要素に誤差分散を加える
+diag(K) <- diag(K) + theta3
+
+## x * new_xの共分散行列を計算する
+k   <- get_cov_mat(train$x, test, theta1 = theta1, theta2 = theta2)
+
+## new_x * new_xの共分散行列を計算する
+s   <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
+diag(s)   <- diag(s) + theta3
+
+## 平均の推定
+Mu  <- t(k) %*% solve(K) %*% train$y # yyはここでまとめて計算した
+
+## 分散の推定
+Var <- s - t(k) %*% solve(K) %*% k
+# Var <- s
+
+## 信頼区間
+CI_u  <- Mu + 2 * sqrt(diag(Var))
+CI_l  <- Mu - 2 * sqrt(diag(Var))
+```
+
+
+```{r}
+plot(train, xlim = c(-0.5, 3.5), ylim = c(-1, 3), type = "n")
+polygon(c(test, rev(test)), c(CI_u, rev(CI_l)), col = 'gray', border = NA)
+points(train$x, train$y, xlim = c(-0.5, 3.5), ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
+lines(test, Mu, xlim = c(-0.5, 3.5), ylim = c(-1, 3), type = "l", ylab = "")
+```
+
+
+ちょっと本のグラフとは異なりますが、同様のプロットを作成することが出来ました。
+
+ここで大事なポイントとして、これは本にも記載されていることですが、上記の計算では一般の機械学習アルゴリズムで認められる「反復的な処理によって点推定値を求める工程」（いわゆるフィッティングや最適化）は一切行われていません。平均も分散も、行列計算によって解析的に得られています。**ガウス過程回帰においては（ハイパーパラメータを除いて）学習は存在しない**ということを押さえておく必要があると思います。
+
+さて、上記のプロットを見るとデータが観測されている付近では分散（グレーの帯）が小さくなっていることに気付きます。特に左端のデータと右端のデータで顕著ですね。この分散の値は`Var <- s - t(k) %*% solve(K) %*% k`で計算されているのですが、それぞれの対角要素をプロットしてみると以下のようになります：
+
+```{r}
+par(mfrow = c(3, 1), mar = c(3, 3, 1, 1))
+plot(cbind(test, diag(s)), type = "l", xlab = "", ylab = "diag(Var)")
+plot(cbind(test, diag(t(k) %*% solve(K) %*% k)), type = "l", xlab = "", ylab = "diag(Var)")
+plot(cbind(test, diag(Var)), type = "l", xlab = "", ylab = "diag(Var)")
+```
+
+`s`の対角要素は一定の値を取り、そこから`t(k) %*% solve(K) %*% k)`の値を減じるため`Var`とはちょうど反転した形状になっていますね。この`k`は`train$x`と`test`の共分散なので、元のデータが存在する付近では共分散が大きくなっているはずです。確かめてみましょう：
+
+
+```{r}
+heatmap.2(k, Rowv = NA, Colv = NA, dendrogram = "none",
+          trace = "none")
+```
+
+横軸がわかりにくいですが、左から右まで`-1`から`3.5`の範囲を取っています。`train$x`の各点付近で数値が大きくなっていることがわかります。この数値（を二乗して`K`で除したもの）を`s`から減じているため、`Var`では元のデータが存在する付近において分散が小さくなっているということがわかります。
+
+ちなみに元のデータが存在する点について、前後5ポイントずつの`Var`の値を取ってくると以下のような感じになります：
+
+```{r}
+data.frame(
+   "x1" = diag(Var)[(-5:5)+which(round(seq(-1, 3.5, 0.05), 3) == train$x[1])],
+   "x2" = diag(Var)[(-5:5)+which(round(seq(-1, 3.5, 0.05), 3) == train$x[2])],
+   "x3" = diag(Var)[(-5:5)+which(round(seq(-1, 3.5, 0.05), 3) == train$x[3])],
+   "x4" = diag(Var)[(-5:5)+which(round(seq(-1, 3.5, 0.05), 3) == train$x[4])],
+   "x5" = diag(Var)[(-5:5)+which(round(seq(-1, 3.5, 0.05), 3) == train$x[5])]
+)
+```
+
+元のデータが存在する点（6行目）が相対的に小さくなっているのがわかります。
+
+---
+
+続いて図3.20に取り掛かります。先ほどのガウス過程回帰ではハイパーパラメータである`theta1`、`theta2`、`theta3`に事前に決めた数値を入力していましたが、今度はこれをデータから推定しましょう。
+
+その前に`rbf_knl`について引数`theta1`と`theta2`は`exp`を取ってから計算するように修正します。これは本の脚注に記載のある通り、パラメータの取りうる値域に制約がある場合に、その制約を回避するためのテクニックです。なお以降の処理で最適化には`optim`を使用しますが、その際に`method`として`L-BFGS-B`を指定することでパラメータに対して矩形制約を与えることも可能です（が、今回はパスします）。
+
+```{r}
+## theta > 0の制約を外すためにexpを付ける
+rbf_knl_exp <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   exp(theta1) * exp(-norm(x1 - x2, "2")^2/exp(theta2))
+}
+```
+
+関数を新しく定義したので`get_cov_mat`も新たに定義しましょう。
+
+```{r}
+get_cov_mat_exp <- function(x1, x2, theta1 = 1, theta2 = 1) {
+   
+   ## matrixに変換
+   x1 <- as.matrix(x1)
+   x2 <- as.matrix(x2)
+   
+   ## 行の組み合わせを作成する
+   n <- nrow(x1)
+   m <- nrow(x2)
+   d <- ncol(x1)
+   tmp <- cbind(kronecker(x1, matrix(1, m)), kronecker(matrix(1, n), x2))
+   
+   ret <- apply(tmp, 1, function(x, d, theta1, theta2) {
+      rbf_knl_exp(x[(1:d)], x[(d+1):ncol(tmp)], theta1, theta2) # rbf_knl_expを使う
+   }, d, theta1, theta2)
+   return(matrix(ret, n, m, byrow = T))
+}
+```
+
+続いて、本の式(3.92)に従い対数尤度関数を定義します：
+
+```{r}
+L <- function(param, x, y) {
+   # C <- -nrow(train)/2*log(2*pi)
+   C <- 0
+   K <- get_cov_mat_exp(x, x, theta1 = param[1], theta2 = param[2])
+   diag(K) <- diag(K) + exp(param[3])
+   
+   return(-log(det(K)) - t(as.matrix(y)) %*% solve(K) %*% as.matrix(y) + C)
+}
+```
+
+ここで`C`は定数部です。本にしたがって`C`を定義すると上の`C`になると思うのですが、結果の対数尤度が今いち合わなかったので一旦0を与えています。パラメータの推定には影響しないはずです。
+
+では`optim`を使って推定してみましょう。最大化したいので`fnscale = -1`としています。
+
+```{r}
+param <- c(1, 1, 1)
+res_par_01 <- 
+   optim(par = optim(par = param, fn = L, x = train$x, y = train$y, 
+                     control = list(fnscale = -1))$par,
+         fn = L, x = train$x, y = train$y, control = list(fnscale = -1))
+```
+```{r}
+print(exp(res_par_01$par), digits = 3)
+L(res_par_01$par, train$x, train$y)
+```
+
+`theta1`、`theta2`、`theta3`は小数点以下3桁まで合っていますね！ただし対数尤度が少し違います（本では-1.788）。。。
+
+`optim`は初期値によって影響を受けることがあるので、値を変えてもう一度。
+
+```{r}
+param <- c(0.1, 0.1, 0.1)
+res_par_02 <- 
+   optim(par = optim(par = param, fn = L, x = train$x, y = train$y, 
+                     control = list(fnscale = -1))$par,
+         fn = L, x = train$x, y = train$y, control = list(fnscale = -1))
+```
+```{r}
+print(exp(res_par_02$par), digits = 3)
+L(res_par_02$par, train$x, train$y)
+```
+
+良さそうです。
+
+ここで得られたハイパーパラメータを使ってプロットしてみましょう。これは図3.20の(a)に当たります。
+
+```{r}
+gen_gpreg_plot <- function(param, x, y) {
+
+   test <- seq(-1, 3.5, 0.05)
+
+   theta1 <- exp(param[1])
+   theta2 <- exp(param[2])
+   theta3 <- exp(param[3])
+   
+   K       <- get_cov_mat(x, x, theta1 = theta1, theta2 = theta2)
+   diag(K) <- diag(K) + theta3
+   k       <- get_cov_mat(x, test, theta1 = theta1, theta2 = theta2)
+   s       <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
+   diag(s) <- diag(s) + theta3
+   Mu      <- t(k) %*% solve(K) %*% y
+   Var     <- s - t(k) %*% solve(K) %*% k
+   CI_u    <- Mu + 2 * sqrt(diag(Var))
+   CI_l    <- Mu - 2 * sqrt(diag(Var))
+   
+   plot(x, y, xlim = c(-0.5, 3.5), ylim = c(-1, 3), type = "n")
+   polygon(c(test, rev(test)), c(CI_u, rev(CI_l)), col = 'gray', border = NA)
+   points(x, y, xlim = c(-0.5, 3.5), ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
+   lines(test, Mu, xlim = c(-0.5, 3.5), ylim = c(-1, 3), type = "l", ylab = "")
+
+}
+```
+
+```{r}
+gen_gpreg_plot(res_par_02$par, train$x, train$y)
+```
+
+
+では最後に、`dat`のデータを全て使って推定してみましょう。このようなデータになります。
+
+```{r}
+plot(dat, ylim = c(-1, 3), xlab = "x", pch = 4, cex = 2)
+```
+
+```{r}
+param <- c(1, 1, 1)
+res_par_03 <- 
+   optim(par = optim(par = param, fn = L, x = dat$x, y = dat$y, 
+                     control = list(fnscale = -1))$par,
+         fn = L, x = dat$x, y = dat$y, control = list(fnscale = -1))
+```
+```{r}
+print(exp(res_par_03$par), digits = 3)
+L(res_par_03$par, dat$x, dat$y)
+```
+
+`theta1`が0.001ずれましたがパラメータとしてはうまく推定できているようです。ただし対数尤度はやっぱり一致しません。なぜだ。。。
+
+推定されたパラメータを使ってプロットを描いてみましょう（図3.20の(b)）。
+
+
+```{r}
+gen_gpreg_plot(res_par_03$par, dat$x, dat$y)
+```
+
+出来ました！
+
