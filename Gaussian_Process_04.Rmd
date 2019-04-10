@@ -13,6 +13,8 @@ output: html_document
 今回は図3.23と3.29に挑戦します。データは、陸上男子100Mについては[こちら](https://www.topendsports.com/sport/athletics/record-100m.htm)から該当する部分を取ってきました。
 また久保先生の緑本からのデータはサポートサイト(http://chasen.org/~daiti-m/gpbook/data/kubo.dat)から取得しました。
 
+### 図3.23
+#### RBFカーネル
 まずは陸上男子100Mのデータから。一部データを除外してプロットしてみましょう。
 
 ```{r}
@@ -26,13 +28,6 @@ plot(dat$x, dat$y, xlab = "year", ylab = "time",
      xlim = c(1960, 2020), ylim = c(9.5, 10.1), pch = 4, cex = 2)
 ```
 
-```{r}
-# tmp <- read.table("./Data/World_Record.dat", sep = "\t",
-#                   col.names = c("name", "time", "date"))
-# tmp <- tmp[-c(6, 17:21), -1]
-# tmp$date <- as.integer(gsub(".*, ", "", tmp$date))
-# colnames(tmp) <- c("y", "x")
-```
 
 本で使われているデータとは少し違っている様子ですが、このまま進めます。
 
@@ -195,5 +190,89 @@ gen_gpreg_plot(book_par, dat$x, dat$y)
 
 
 
+#### RBFカーネル + 線形カーネル
+```{r}
+L2 <- function(param, x, y) {
+   # C <- -nrow(train)/2*log(2*pi)
+   C <- 0
+   K <- get_cov_mat_exp(x, x, theta1 = param[1], theta2 = param[2])
+   diag(K) <- diag(K) + exp(param[3])
+   K <- K + exp(param[4]) * outer(x, x)
+   
+   return(-log(det(K)) - t(as.matrix(y)) %*% solve(K) %*% as.matrix(y) + C)
+}
+```
+
+```{r}
+param <- c(1, 1, 1, 1)
+res_par_2 <- 
+   optim(par = optim(par = param, fn = L2, x = dat$x, y = dat$y, 
+                     control = list(fnscale = -1))$par,
+         fn = L2, x = dat$x, y = dat$y, control = list(fnscale = -1))
+```
+
+```{r}
+print(exp(res_par_2$par), digits = 3)
+L2(res_par_2$par, dat$x, dat$y)
+```
 
 
+```{r}
+gen_gpreg_plot_2 <- function(param, x, y) {
+
+   min_y <- 9.4
+   max_y <- 10.1
+   min_x <- -2
+   max_x <- 1.7
+
+   test <- seq(min_x, max_x, 0.05)
+
+   theta1 <- exp(param[1])
+   theta2 <- exp(param[2])
+   theta3 <- exp(param[3])
+   theta4 <- exp(param[4])
+   
+   K       <- get_cov_mat(x, x, theta1 = theta1, theta2 = theta2)
+   diag(K) <- diag(K) + theta3
+   K       <- K + theta4 * outer(x, x)
+   
+   k       <- get_cov_mat(x, test, theta1 = theta1, theta2 = theta2)
+   k       <- k + theta4 * outer(x, test)
+   
+   s       <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
+   diag(s) <- diag(s) + theta3
+   s       <- s + theta4 * outer(test, test)
+   
+   Mu      <- t(k) %*% solve(K) %*% y * scale_pars["scaled:scale.y"] +
+      scale_pars["scaled:center.y"]
+   Var     <- (s - t(k) %*% solve(K) %*% k) * sqrt(scale_pars["scaled:scale.y"])
+   # CI_u    <- Mu + 2 * sqrt(diag(Var))
+   # CI_l    <- Mu - 2 * sqrt(diag(Var))
+   CI_u    <- Mu + 0.5 * sqrt(diag(Var))
+   CI_l    <- Mu - 0.5 * sqrt(diag(Var))
+   
+   x <- x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   y <- y * scale_pars["scaled:scale.y"] + scale_pars["scaled:center.y"]
+   test <- test * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   min_x <- min_x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   max_x <- max_x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   xlim <- c(min_x, max_x)
+   ylim <- c(min_y, max_y)
+   
+   plot(x, y, xlim = xlim, ylim = ylim, type = "n")
+   polygon(c(test, rev(test)), c(CI_u, rev(CI_l)), col = 'gray', border = NA)
+   points(x, y, xlim = xlim, ylim = ylim, xlab = "x", pch = 4, cex = 2)
+   lines(test, Mu, xlim = xlim, ylim = ylim, type = "l", ylab = "")
+
+}
+```
+
+
+```{r}
+gen_gpreg_plot_2(res_par_2$par, dat$x, dat$y)
+```
+
+```{r}
+book_par <- c(log(0.07), log(0.02), log(0.06), log(0.92))
+gen_gpreg_plot_2(book_par, dat$x, dat$y)
+```
