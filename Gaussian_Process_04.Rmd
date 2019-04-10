@@ -10,18 +10,15 @@ output: html_document
 前回の記事の続きです。
 
 
-今回は図3.23と3.29に挑戦します。データは、陸上男子100Mについては[こちら](https://www.topendsports.com/sport/athletics/record-100m.htm)から該当する部分を取ってきました。
-また久保先生の緑本からのデータはサポートサイト(http://chasen.org/~daiti-m/gpbook/data/kubo.dat)から取得しました。
+今回は図3.23に挑戦します。データは[こちら](https://www.topendsports.com/sport/athletics/record-100m.htm)から該当する部分を取ってきました。
 
-### 図3.23
-#### RBFカーネル
-まずは陸上男子100Mのデータから。一部データを除外してプロットしてみましょう。
+まずはプロットしてみます。一部のデータは除外しました。
 
 ```{r}
 dat <- read.table("./Data/World_Record.dat", sep = "\t",
                   col.names = c("name", "time", "date"))
 
-dat <- dat[-c(6, 17:21), -1]
+dat <- dat[-c(6, 17:21), -1] # ドーピング！
 dat$date <- as.integer(gsub(".*, ", "", dat$date))
 colnames(dat) <- c("y", "x")
 plot(dat$x, dat$y, xlab = "year", ylab = "time", 
@@ -33,14 +30,15 @@ plot(dat$x, dat$y, xlab = "year", ylab = "time",
 
 本にしがたい、Xおよびyを平均0、分散1にスケーリングします。`scale`を使いますが、`dat`は`data.frame`で持っておきたいのでスケーリングのパラメータは別に取っておきましょう。
 
-
 ```{r}
 dat <- scale(dat)
 scale_pars <- unlist(attributes(dat)[c("scaled:center", "scaled:scale")])
 dat <- as.data.frame(dat)
 ```
 
-まずはこのデータに対してシンプルにRBFカーネルで推定してみます。前回の記事で定義した関数を色々使いまわすことにします。まずは`L`、これはハイパーパラメータを与えたときに対数尤度を返す関数でした。
+それではこのデータを使ってガウス過程回帰を実行します。まずはRBFカーネルを使って推定してみましょう。
+
+前回の記事で定義した関数を色々使い回すことにします。まずは`L`、これはハイパーパラメータを与えたときに対数尤度を返す関数でした。
 
 ```{r}
 L <- function(param, x, y) {
@@ -75,7 +73,6 @@ get_cov_mat_exp <- function(x1, x2, theta1 = 1, theta2 = 1) {
 }
 ```
 
-
 さらに`rbf_knl_exp`も使います。
 
 ```{r}
@@ -85,7 +82,7 @@ rbf_knl_exp <- function(x1, x2, theta1 = 1, theta2 = 1) {
 ```
 
 
-上記の関数はパラメータ探索における効率化のためにパラメータは`log`を取ってから与えることを前提としていましたが、可視化用に元の関数も定義しておきましょう。
+上記の関数は、パラメータ探索における効率化のためにパラメータの`log`を取ってから与えることを前提としていましたが、可視化用に元の関数も定義しておきましょう。
 
 ```{r}
 get_cov_mat <- function(x1, x2, theta1 = 1, theta2 = 1) {
@@ -113,9 +110,7 @@ rbf_knl <- function(x1, x2, theta1 = 1, theta2 = 1) {
 }
 ```
 
-
-
-ではこれらの関数を使い、今回のデータでハイパーパラメータの最適化を実行してみましょう。
+ではこれらの関数を使い、今回のデータでハイパーパラメータの最適化を実行してみます。
 
 ```{r}
 param <- c(1, 1, 1)
@@ -130,7 +125,9 @@ print(exp(res_par$par), digits = 3)
 L(res_par$par, dat$x, dat$y)
 ```
 
+教科書P94に示された値とは結構異なるようです（それぞれ`1.62`、`0.44`、`0.06`）。特に`theta2`が大きく推定されていますね。
 
+このパラメータを使って可視化します。やっつけですが、以下のように関数を定義しました。
 
 ```{r}
 gen_gpreg_plot <- function(param, x, y) {
@@ -151,14 +148,13 @@ gen_gpreg_plot <- function(param, x, y) {
    k       <- get_cov_mat(x, test, theta1 = theta1, theta2 = theta2)
    s       <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
    diag(s) <- diag(s) + theta3
+   
    Mu      <- t(k) %*% solve(K) %*% y * scale_pars["scaled:scale.y"] +
       scale_pars["scaled:center.y"]
-   Var     <- (s - t(k) %*% solve(K) %*% k) * sqrt(scale_pars["scaled:scale.y"])
-   # CI_u    <- Mu + 2 * sqrt(diag(Var))
-   # CI_l    <- Mu - 2 * sqrt(diag(Var))
-   CI_u    <- Mu + 0.5 * sqrt(diag(Var))
-   CI_l    <- Mu - 0.5 * sqrt(diag(Var))
-   
+   Var     <- (s - t(k) %*% solve(K) %*% k) * (scale_pars["scaled:scale.y"])^2
+   CI_u    <- Mu + 2 * sqrt(diag(Var))
+   CI_l    <- Mu - 2 * sqrt(diag(Var))
+
    x <- x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
    y <- y * scale_pars["scaled:scale.y"] + scale_pars["scaled:center.y"]
    test <- test * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
@@ -175,33 +171,55 @@ gen_gpreg_plot <- function(param, x, y) {
 }
 ```
 
+上の関数の中で、ガウス過程により`K`、`k`および`s`を求めるところまでは標準化後の値を使っていますが、`Mu`を求めるところからは元のスケールに戻しています。
 
+プロットしてみましょう。
 
 ```{r}
 gen_gpreg_plot(res_par$par, dat$x, dat$y)
 ```
 
-
+おや、随分とスムーズな線になってしまいました。試しに教科書のパラメータを使ってみましょう。
 
 ```{r}
 book_par <- c(log(1.62), log(0.44), log(0.06))
 gen_gpreg_plot(book_par, dat$x, dat$y)
 ```
 
+教科書と同じようなプロットが得られました。
 
+ガウス過程回帰の予測値（`Mu`）が滑らかであるということは、隣接する値が似ていることを意味しています。つまりそれらの共分散が（相対的に）大きい状態です。RBFカーネルでは`theta1`と`theta2`がパラメータとして与えられますが、`theta2`は`exp`の中で使われるため、特に共分散に対する影響が大きいのではないでしょうか。今回の例で言えば（`exp`の中で分母として使われる）`theta2`が教科書の値よりも10倍以上大きな値となっているので、`exp`の項が`0`に近づきやすかったのではないでしょうか。
 
-#### RBFカーネル + 線形カーネル
+ちょっと確認してみましょう。`theta2`を教科書の値と差し替えた場合の共分散行列の変化をプロットします。
+
+```{r}
+library(gplots)
+a <- get_cov_mat(dat$x, dat$x, res_par$par[1], res_par$par[2])
+b <- get_cov_mat(dat$x, dat$x, res_par$par[1], 0.44)
+```
+
+```{r}
+heatmap.2(a, Rowv = NA, Colv = NA, dendrogram = "none", trace = "none")
+heatmap.2(b, Rowv = NA, Colv = NA, dendrogram = "none", trace = "none")
+```
+
+これを見ると、データから推定した値による共分散行列（`a`）は`dat$x`の1~5番目と6~11番目の値の共分散を大きく評価していますが、教科書の値を使った場合（`b`）では「似ていない」と判断しています。その結果、データから推定した方では相対的にグネグネした線が描かれたのだと思います。
+
+続いてRBFカーネルに線形カーネルを追加して当てはめてみたいと思います。対数尤度関数を以下のように修正します：
+
 ```{r}
 L2 <- function(param, x, y) {
    # C <- -nrow(train)/2*log(2*pi)
    C <- 0
    K <- get_cov_mat_exp(x, x, theta1 = param[1], theta2 = param[2])
    diag(K) <- diag(K) + exp(param[3])
-   K <- K + exp(param[4]) * outer(x, x)
+   K <- K + exp(param[4]) * outer(x, x) # 線形カーネルを追加
    
    return(-log(det(K)) - t(as.matrix(y)) %*% solve(K) %*% as.matrix(y) + C)
 }
 ```
+
+`optim`による最適化を実行しましょう。
 
 ```{r}
 param <- c(1, 1, 1, 1)
@@ -211,11 +229,16 @@ res_par_2 <-
          fn = L2, x = dat$x, y = dat$y, control = list(fnscale = -1))
 ```
 
+
 ```{r}
 print(exp(res_par_2$par), digits = 3)
 L2(res_par_2$par, dat$x, dat$y)
 ```
 
+相変わらず`theta2`が教科書の値と外れますが、先ほどよりは小さな値となりました。
+しかし対数尤度は一致しないですね。。。
+
+可視化用の関数を少し修正します。
 
 ```{r}
 gen_gpreg_plot_2 <- function(param, x, y) {
@@ -245,6 +268,105 @@ gen_gpreg_plot_2 <- function(param, x, y) {
    
    Mu      <- t(k) %*% solve(K) %*% y * scale_pars["scaled:scale.y"] +
       scale_pars["scaled:center.y"]
+   Var     <- (s - t(k) %*% solve(K) %*% k) * (scale_pars["scaled:scale.y"])^2
+   CI_u    <- Mu + 2 * sqrt(diag(Var))
+   CI_l    <- Mu - 2 * sqrt(diag(Var))
+   
+   x <- x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   y <- y * scale_pars["scaled:scale.y"] + scale_pars["scaled:center.y"]
+   test <- test * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   min_x <- min_x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   max_x <- max_x * scale_pars["scaled:scale.x"] + scale_pars["scaled:center.x"]
+   xlim <- c(min_x, max_x)
+   ylim <- c(min_y, max_y)
+   
+   plot(x, y, xlim = xlim, ylim = ylim, type = "n")
+   polygon(c(test, rev(test)), c(CI_u, rev(CI_l)), col = 'gray', border = NA)
+   points(x, y, xlim = xlim, ylim = ylim, xlab = "x", pch = 4, cex = 2)
+   lines(test, Mu, xlim = xlim, ylim = ylim, type = "l", ylab = "")
+
+}
+```
+
+プロットしてみます。
+
+```{r}
+gen_gpreg_plot_2(res_par_2$par, dat$x, dat$y)
+```
+
+依然としてかなりスムーズな線が引かれています。教科書の値を使ってみましょう。
+
+```{r}
+book_par <- c(log(0.07), log(0.02), log(0.06), log(0.92))
+gen_gpreg_plot_2(book_par, dat$x, dat$y)
+```
+
+同じようなプロットが得られました！
+
+以上です。
+今回まで「ガウス過程と機械学習」第3章のグラフをいくつか作図してきましたが、これ以降はMCMCやGPyを使うなどしており、ちょっと理解に時間がかかりそうなので一旦ここで終わりにしておきます。
+
+
+
+
+### 図3.29
+
+```{r}
+dat <- read.table("./Data/kubo.dat", col.names = "y")
+plot(dat$y, ylab = "y", xlab = "x", pch = 4, cex = 2)
+```
+
+
+
+```{r}
+dat$x <- 1:length(dat$y)
+dat <- scale(dat)
+scale_pars <- unlist(attributes(dat)[c("scaled:center", "scaled:scale")])
+dat <- as.data.frame(dat)
+```
+
+```{r}
+
+```
+
+
+```{r}
+param <- c(1, 1, 1)
+res_par_3 <- 
+   optim(par = optim(par = param, fn = L, x = dat$x, y = dat$y, 
+                     control = list(fnscale = -1))$par,
+         fn = L, x = dat$x, y = dat$y, control = list(fnscale = -1))
+```
+
+```{r}
+print(exp(res_par_3$par), digits = 3)
+L(res_par_3$par, dat$x, dat$y)
+```
+
+```{r}
+gen_gpreg_plot_3 <- function(param, x, y) {
+
+   min_y <- 0
+   max_y <- 20
+   min_x <- -2
+   max_x <- 2
+
+   test <- seq(min_x, max_x, 0.05)
+
+   theta1 <- exp(param[1])
+   theta2 <- exp(param[2])
+   theta3 <- exp(param[3])
+
+   K       <- get_cov_mat(x, x, theta1 = theta1, theta2 = theta2)
+   diag(K) <- diag(K) + theta3
+
+   k       <- get_cov_mat(x, test, theta1 = theta1, theta2 = theta2)
+
+   s       <- get_cov_mat(test, test, theta1 = theta1, theta2 = theta2)
+   diag(s) <- diag(s) + theta3
+
+   Mu      <- t(k) %*% solve(K) %*% y * scale_pars["scaled:scale.y"] +
+      scale_pars["scaled:center.y"]
    Var     <- (s - t(k) %*% solve(K) %*% k) * sqrt(scale_pars["scaled:scale.y"])
    # CI_u    <- Mu + 2 * sqrt(diag(Var))
    # CI_l    <- Mu - 2 * sqrt(diag(Var))
@@ -268,11 +390,17 @@ gen_gpreg_plot_2 <- function(param, x, y) {
 ```
 
 
-```{r}
-gen_gpreg_plot_2(res_par_2$par, dat$x, dat$y)
-```
 
 ```{r}
-book_par <- c(log(0.07), log(0.02), log(0.06), log(0.92))
-gen_gpreg_plot_2(book_par, dat$x, dat$y)
+gen_gpreg_plot_3(res_par_3$par, dat$x, dat$y)
 ```
+
+
+```{r}
+exp(Mu * y - exp(Mu))
+```
+
+
+
+
+
