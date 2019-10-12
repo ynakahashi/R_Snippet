@@ -1,0 +1,317 @@
+---
+title: "GAMをもう少し理解したい"
+output: html_document
+---
+[contents:]
+
+### 背景
+業務でモデリングを行うときは、私は大抵の場合GLMから始めます。目的変数に合わせて柔軟に分布を選択することが可能で、回帰係数という極めて解釈性の高い結果を得ることができるというのが理由です。
+
+一方でGLMを使っていて不満に感じることの一つが、（\eta の世界で）非線形な効果を表現できないという点です。もちろん２次・３次の項や交互作用項を追加することである程度それらの不満は解消できるのですが、もう少しデータからそれらの特徴を学習したいと思うことがあります。
+
+今回取り上げる一般化加法モデル（Generalized Additive Model, GAM）は、そのような複雑な関連性を表現できるよう説明変数に非線形な変換を行うもので、GLMを拡張したものとなります。
+
+
+```{r}
+library(ISLR)
+```
+
+```{r}
+fit <- lm(wage ~ poly(age, 4), data = Wage)
+```
+
+```{r}
+coef(summary(fit))
+```
+
+```{r}
+tmp <- head(cbind(Wage$age, poly(Wage$age, 4)))
+tmp
+```
+
+```{r}
+fit2 <- lm(wage ~ poly(age, 4, raw = T), data = Wage)
+```
+
+```{r}
+coef(summary(fit2))
+```
+
+```{r}
+tmp2 <- head(cbind(Wage$age, poly(Wage$age, 4, raw = T)))
+tmp2
+```
+
+```{r}
+tmp2[, 2]^2
+tmp2[, 2]^3
+tmp2[, 2]^4
+```
+
+```{r}
+agelims <- range(Wage$age)
+age.grid <- seq(from = agelims[1], to = agelims[2])
+preds <- predict(fit, newdata = list(age = age.grid), se = TRUE)
+se.bands <- cbind(preds$fit + 2 * preds$se.fit, preds$fit - 2 * preds$se.fit)
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 1, 1), oma = c(0, 0, 4, 0))
+plot(Wage$age, Wage$wage, xlim = agelims, cex = .5, col = "darkgrey")
+title("Quad Polynomial", outer = T)
+lines(age.grid, preds$fit, lwd = 2, col = "blue")
+matlines(age.grid, se.bands, lwd = 1, col = "blue", lty = 3)
+```
+
+
+
+
+```{r}
+library(splines)
+```
+
+
+
+```{r}
+plot(Wage$age, ns(Wage$age))
+```
+
+
+```{r}
+par(mfrow = c(2, 2), cex = .5)
+plot(ns(Wage$age, df = 4)[, 1], Wage$wage)
+plot(ns(Wage$age, df = 4)[, 2], Wage$wage)
+plot(ns(Wage$age, df = 4)[, 3], Wage$wage)
+plot(ns(Wage$age, df = 4)[, 4], Wage$wage)
+```
+
+
+
+```{r}
+plot(Wage$age, Wage$wage, xlim = agelims, cex = .5, col = "darkgrey")
+title("Smooth spline")
+fit <- smooth.spline(Wage$age, Wage$wage, df = 16)
+fit2 <- smooth.spline(Wage$age, Wage$wage, cv = TRUE)
+fit2$df
+lines(fit, col = "red", lwd = 2)
+lines(fit2, col = "blue", lwd = 2)
+legend("topright", legend = c("16 DF", "6.8 DF"),
+       col = c("red", "blue"), lty = 1, lwd = 2, cex = .8)
+```
+
+```{r}
+plot(Wage$age, Wage$wage, xlim = agelims, cex = .5, col = "darkgrey")
+title("Loess")
+fit = loess(wage ~ age, span = .2, data = Wage)
+fit2 = loess(wage ~ age, span = .5, data = Wage)
+lines(age.grid, predict(fit, data.frame(age = age.grid)),
+      col = "red", lwd = 2)
+lines(age.grid, predict(fit2, data.frame(age = age.grid)),
+      col = "blue", lwd = 2)
+legend("topright", legend = c("Span = 0.2", "Span = 0.5"),
+       col = c("red", "blue"), lty = 1, lwd = 2, cex = .8)
+```
+
+
+
+```{r}
+gam1 <- lm(wage ~ ns(year, 4) + ns(age, 5) + education, data = Wage)
+coef(summary(gam1))
+```
+
+```{r}
+plot(gam1)
+```
+
+```{r}
+library(gam)
+```
+
+```{r}
+gam.m3 <- gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
+```
+
+```{r}
+par(mfrow = c(1, 3))
+plot(gam.m3, se = TRUE, col = "blue")
+```
+
+`gam1` は `lm` で当てはめているが `plot.Gam` が利用できる
+
+```{r}
+par(mfrow = c(1, 3))
+plot.Gam(gam1, se = TRUE, col = "red")
+```
+
+
+平滑化スプラインを使う場合は `lm` ではなく `gam` を使わないとまともに計算できない
+
+```{r}
+gam.m4 <- lm(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
+```
+```{r}
+par(mfrow = c(1, 3))
+plot.Gam(gam.m4, se = TRUE, col = "red")
+```
+
+
+```{r}
+gam.lo <- gam(wage ~ s(year, 4) + lo(age, span = 0.7) + education,
+              data = Wage)
+```
+
+```{r}
+par(mfrow = c(1, 3))
+plot.Gam(gam.lo, se = TRUE, col = "blue")
+```
+
+
+```{r}
+gam.lo.i <- gam(wage ~ lo(year, age, span = 0.5) + education,
+                data = Wage)
+```
+
+```{r}
+# install.packages("akima")
+library(akima)
+```
+
+```{r}
+plot(gam.lo.i)
+```
+
+
+```{r}
+gam.lr <- gam(I(wage > 250) ~ year + s(age, 5) + education,
+              family = "binomial", data = Wage)
+```
+
+```{r}
+par(mfrow = c(1, 3))
+plot(gam.lr, se = TRUE, col = "blue")
+```
+
+```{r}
+gam.lr.s <- gam(I(wage > 250) ~ year + s(age, 5) + education,
+                family = "binomial", data = Wage, 
+                subset = (education != "1. < HS Grad"))
+par(mfrow = c(1, 3))
+plot(gam.lr.s, se = TRUE, col = "blue")
+```
+
+
+モデルオブジェクトが `smooth` を持つか
+```{r}
+is.null(gam.m4$smooth)
+```
+
+```{r}
+is.null(gam.m3$smooth)
+```
+
+
+新規データに対してはSEは出せない
+
+```{r}
+nd <- head(Wage, 5)
+predict(gam.m3, nd, se.fit = TRUE)
+```
+
+
+
+まずは `predict.glm` で予測値を求める。当然答えは異なる。
+
+```{r}
+predict.glm(gam.m3, nd)
+predict.Gam(gam.m3, nd)
+```
+
+
+使用している変数で model.frame を作成する
+
+```{r}
+Terms <- delete.response(gam.m3$terms)
+model.frame(Terms, nd)
+```
+
+
+```{r}
+!is.null(cl <- attr(Terms, "dataClasses"))
+```
+
+```{r}
+smooth.frame <- model.frame(Terms, nd, na.action = na.fail, 
+                            xlev = gam.m3$xlevels)
+.checkMFClasses(cl, smooth.frame)
+```
+
+
+モデルオブジェクトから平滑化された説明変数の列名を取ってくる。
+上で作った `smooth.frame` ではなく、モデルオブジェクトに格納された
+`smooth.frame` なので注意。
+
+```{r}
+nrows <- nrow(nd)
+smooth.labels <- names(gam.m3$smooth.frame)
+n.smooths <- length(smooth.labels)
+pred.s <- array(0, c(nrows, n.smooths), list(row.names(smooth.frame), 
+            smooth.labels))
+pred.s
+```
+
+
+
+```{r}
+terms <- labels(gam.m3)
+smooth.labels[match(smooth.labels, terms, 0) > 0]
+```
+
+モデルオブジェクトの `smooth.frame` において該当する列の "call" アトリビューションを取り出す
+```{r}
+TT <- "s(year, 4)"
+Call <- attr(gam.m3$smooth.frame[[TT]], "call")
+Call
+```
+
+上記にオプションを追加する。 `Call` は `call` クラスであり、
+List における各要素にオプションを持つ感じ。
+
+```{r}
+Call$xeval <- substitute(smooth.frame[[TT]], list(TT = TT))
+Call
+```
+
+
+データの各点の重み w と、上で作った z を渡して `gam.s` を呼ぶ。
+`data` オブジェクトの代わりにモデルオブジェクトの `smooth.frame` を渡す。
+`spar` はスムージングパラメータ、 `df` は平滑化の自由度。 `df` が指定されている場合はこちらが使われる
+
+```{r}
+w <- gam.m3$weights
+z <- gam.m3$residuals + gam.m3$smooth[, TT]
+# pred.s[, TT] <- eval(Call)
+pred.s <- gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1, df = 4, xeval = smooth.frame[[TT]])
+```
+
+
+`df` を指定した状態で `spar` を変えても予測値は変わらないはず。
+
+```{r}
+gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 0.8, df = 4, xeval = smooth.frame[[TT]])
+gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1.2, df = 4, xeval = smooth.frame[[TT]])
+```
+
+`df` を0にすると `spar` が使われる
+
+```{r}
+gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 0.8, df = 0, xeval = smooth.frame[[TT]])
+gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1.2, df = 0, xeval = smooth.frame[[TT]])
+```
+
+`df` を1以上で変化させると予測値が変わる
+
+```{r}
+gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1, df = 2, xeval = smooth.frame[[TT]])
+gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1, df = 4, xeval = smooth.frame[[TT]])
+```
+
+
+
+
