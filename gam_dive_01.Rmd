@@ -5,48 +5,129 @@ output: html_document
 [contents:]
 
 ### 背景
-業務でモデリングを行うときは、私は大抵の場合GLMから始めます。目的変数に合わせて柔軟に分布を選択することが可能で、回帰係数という極めて解釈性の高い結果を得ることができるというのが理由です。
+業務でモデリングを行うとき、私は大抵の場合GLMから始めます。目的変数に合わせて柔軟に分布を選択することが可能で、回帰係数という極めて解釈性の高い結果を得ることができるというのが理由です。
 
 一方でGLMを使っていて不満に感じることの一つが、（\eta の世界で）非線形な効果を表現できないという点です。もちろん２次・３次の項や交互作用項を追加することである程度それらの不満は解消できるのですが、もう少しデータからそれらの特徴を学習したいと思うことがあります。
 
-今回取り上げる一般化加法モデル（Generalized Additive Model, GAM）は、そのような複雑な関連性を表現できるよう説明変数に非線形な変換を行うもので、GLMを拡張したものとなります。
+今回取り上げる一般化加法モデル（Generalized Additive Model, GAM）は、そのような複雑な関連性を表現できるよう説明変数に非線形な変換を行うもので、GLMを拡張したものとなります。ちょっと古いですが、2015年にMicrosoft RearchがKDDに出した論文[PDF](http://people.dbmi.columbia.edu/noemie/papers/15kdd.pdf)では、GAMを指して「*the gold standard for intelligibility when low-dimensional terms are considered*」と言っており、解釈性を保ちつつ高い予測精度を得ることができるモデルとしています。なおこの論文ではGAMに２次までの交互作用を追加するGA2Mという手法を提案しています。
+
+このGAMの実装について調べた内容を書き留めておきます。
+
+
+### GAMの実行結果
+始めに、GAMを使うとどのような結果を得ることができるのか確認しましょう。ちなみに検証した環境は以下の通りです。
+
+```{r}
+sessionInfo()
+```
+
+
+GAMの実装としてRでは {mgcv}が使われることが多いようですが、今回は「Rによる統計的学習入門」を参考に{gam}を使用しました。ちなみに、この本は統計・機械学習の主要な手法を網羅的に押さえつつ章末にRでの実行方法が紹介されており、大変勉強になる良書です。
+
+Rによる統計的学習入門
+
+同書で用いているサンプルデータ `Wage` を使用するため、{ISLR}を同時に読み込みます。この{ISLR}パッケージは上記の本の原著である*Introduction of Statistical Learning with Applications in R*から来ているようです。またこのデータは、アメリカの東部地域における男性3000人の賃金、および年齢や婚姻状況、人種や学歴などの属性が記録されています。
 
 
 ```{r}
+library(gam)
 library(ISLR)
 ```
 
+早速フィッティングしてみましょう。 `glm` と同様に関数 `gam` でモデルを当てはめることができます。
+
 ```{r}
-fit <- lm(wage ~ poly(age, 4), data = Wage)
+res_gam <- gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
+```
+
+ここで `s(age, 5)` は、説明変数 `year` を平滑化した上でモデルに取り込むことを意味し、5は平滑化の自由度です。なお `s()` の時点ではまだ平滑化は行われておらず、平滑化に必要な情報を属性として付与しているだけのようです。
+
+```{r}
+head(s(Wage$age, 5))
+```
+
+ではフィッティングした結果を見てみましょう。
+
+```{r}
+summary(res_gam)
+```
+
+パッと見ると、 `glm` を当てはめたときと同様の結果が得られるようです。実際、 `gam` の本体（と思われる） `gam.fit` の中では `stats::lm.wfit` が呼ばれます。
+
+しかし、 `glm` の結果と大きく異なる点として、各説明変数の回帰係数が出ていません。これはどういうことでしょう。以下のように説明変数の効果をプロットしてみます。
+
+```{r}
+par(mfrow = c(1, 3))
+plot(res_gam, se = TRUE, col = "blue")
+```
+
+`age` が分かりやすいですが、この変数は34までは0を下回っており、 `wage` に対する `age` は35歳程度までは平均を下回っていることがわかります。その後45歳をピークに減少傾向に入り、65歳を過ぎると再び平均を下回るようになり、以降は急激に減少していきます。このような現象は、年齢とともに役職が上がることで賃金が増加し、退職によって減少することを考えれば非常に納得感のあるものだと思います。
+
+上記の結果は、例えば `age` の二次の項を含めることで
+
+```{r}
+res_lm <- coef(lm(wage ~ year + poly(age, 2) + education, Wage))
+x_lm <- seq(min(Wage$age), max(Wage$age), 100)
+nd <- 
+prd_lm <- 
+```
+
+
+
+
+
+
+なお上のプロットに必要なデータは以下のように取れるので、説明変数の各点における目的変数に対する影響を数値でも確認できます。
+
+```{r}
+tmp <- gam:::preplot.Gam(res_gam, terms = gam:::labels.Gam(res_gam))
+age_sm <- cbind(tmp$`s(age, 5)`$x, tmp$`s(age, 5)`$y) 
+age_sm_uniq <- unique(age_sm[order(age_sm[, 1]), ])
+```
+
+プロットしてみましょう。同じ線が描けます。
+
+```{r}
+plot(age_sm_uniq, type = "l", xlab = "age", ylab = "s(age, 5)")
 ```
 
 ```{r}
-coef(summary(fit))
+
 ```
 
-```{r}
-tmp <- head(cbind(Wage$age, poly(Wage$age, 4)))
-tmp
-```
+
+
+
+
+
+
+
 
 ```{r}
-fit2 <- lm(wage ~ poly(age, 4, raw = T), data = Wage)
+# fit <- lm(wage ~ poly(age, 4), data = Wage)
+# coef(summary(fit))
+# tmp <- head(cbind(Wage$age, poly(Wage$age, 4)))
+# tmp
+# fit2 <- lm(wage ~ poly(age, 4, raw = T), data = Wage)
+# coef(summary(fit2))
+# tmp2 <- head(cbind(Wage$age, poly(Wage$age, 4, raw = T)))
+# tmp2
+# tmp2[, 2]^2
+# tmp2[, 2]^3
+# tmp2[, 2]^4
 ```
 
-```{r}
-coef(summary(fit2))
-```
 
-```{r}
-tmp2 <- head(cbind(Wage$age, poly(Wage$age, 4, raw = T)))
-tmp2
-```
 
-```{r}
-tmp2[, 2]^2
-tmp2[, 2]^3
-tmp2[, 2]^4
-```
+
+
+
+
+
+
+
+
+
 
 ```{r}
 agelims <- range(Wage$age)
