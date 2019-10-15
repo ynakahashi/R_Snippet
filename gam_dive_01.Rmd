@@ -39,7 +39,14 @@ library(gam)
 library(ISLR)
 ```
 
-早速フィッティングしてみましょう。 `glm` と同様に関数 `gam` でモデルを当てはめることができます。
+データの中身を見てみましょう。
+
+```{r}
+head(Wage)
+```
+
+
+このデータを用いて早速フィッティングしてみましょう。 `glm` と同様に関数 `gam` でモデルを当てはめることができます。
 
 ```{r}
 res_gam <- gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
@@ -66,21 +73,27 @@ par(mfrow = c(1, 3))
 plot(res_gam, se = TRUE, col = "blue")
 ```
 
-`age` が分かりやすいですが、この変数は34までは0を下回っており、 `wage` に対する `age` は35歳程度までは平均を下回っていることがわかります。その後45歳をピークに減少傾向に入り、65歳を過ぎると再び平均を下回るようになり、以降は急激に減少していきます。このような現象は、年齢とともに役職が上がることで賃金が増加し、退職によって減少することを考えれば非常に納得感のあるものだと思います。
+`age` が分かりやすいですが、この変数は34までは0未満となっており、  `age`  は35歳程度まで `wage`  の平均を下回っていることがわかります。その後45歳をピークに減少傾向に入り、65歳を過ぎると再び平均を下回るようになり、以降は急激に減少していきます。このような現象は、年齢とともに役職が上がることで賃金が増加し、退職によって減少することを考えれば非常に納得感のあるものだと思います。
 
-上記の結果は、例えば `age` の二次の項を含めることで
+上記の結果は、例えば `age` の二次の項を含めることで `lm` でも再現できるかもしれません。例えば以下のようになります：
 
 ```{r}
-res_lm <- coef(lm(wage ~ year + poly(age, 2) + education, Wage))
-x_lm <- seq(min(Wage$age), max(Wage$age), 100)
-nd <- 
-prd_lm <- 
+res_lm <- lm(wage ~ year + poly(age, 2) + education, Wage)
+x_lm <- seq(min(Wage$age), max(Wage$age), length.out = 100)
+nd <- data.frame(year = rep(2003, 100),
+                 age = x_lm,
+                 education = rep("2. HS Grad"))
+prd_lm <- predict(res_lm, nd, se.fit = T)
+
+
+prd_m <- mean(prd_lm$fit)
+prd_m <- 90
+plot(x_lm, prd_lm$fit - prd_m, type = "l", col = "blue", ylim = c(-40, 10))
+lines(x_lm, prd_lm$fit - prd_m + 2*prd_lm$se.fit, lty = "dashed")
+lines(x_lm, prd_lm$fit - prd_m - 2*prd_lm$se.fit, lty = "dashed")
 ```
 
-
-
-
-
+大体同じような傾向を再現する事ができました。しかしピークを過ぎてからの緩やかな減少は表現できません。
 
 なお上のプロットに必要なデータは以下のように取れるので、説明変数の各点における目的変数に対する影響を数値でも確認できます。
 
