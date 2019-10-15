@@ -75,7 +75,21 @@ plot(res_gam, se = TRUE, col = "blue")
 
 `age` が分かりやすいですが、この変数は34までは0未満となっており、  `age`  は35歳程度まで `wage`  の平均を下回っていることがわかります。その後45歳をピークに減少傾向に入り、65歳を過ぎると再び平均を下回るようになり、以降は急激に減少していきます。このような現象は、年齢とともに役職が上がることで賃金が増加し、退職によって減少することを考えれば非常に納得感のあるものだと思います。
 
-上記の結果は、例えば `age` の二次の項を含めることで `lm` でも再現できるかもしれません。例えば以下のようになります：
+なお上のプロットに必要なデータは以下のように取れるので、説明変数の各点における目的変数に対する影響を数値でも確認できます（必要な関数がエクスポートされていないので `gam:::` で直接呼び出しています）。
+
+```{r}
+tmp <- gam:::preplot.Gam(res_gam, terms = gam:::labels.Gam(res_gam))
+age_sm <- cbind(tmp$`s(age, 5)`$x, tmp$`s(age, 5)`$y) 
+age_sm_uniq <- unique(age_sm[order(age_sm[, 1]), ])
+```
+
+プロットしてみましょう。同じ線が描けます。
+
+```{r}
+plot(age_sm_uniq, type = "l", xlab = "age", ylab = "s(age, 5)")
+```
+
+さて、上記の結果は例えば `age` の二次の項を含めることで `lm` でも再現できるかもしれません。例えば以下のようになります：
 
 ```{r}
 res_lm <- lm(wage ~ year + poly(age, 2) + education, Wage)
@@ -93,24 +107,138 @@ lines(x_lm, prd_lm$fit - prd_m + 2*prd_lm$se.fit, lty = "dashed")
 lines(x_lm, prd_lm$fit - prd_m - 2*prd_lm$se.fit, lty = "dashed")
 ```
 
-大体同じような傾向を再現する事ができました。しかしピークを過ぎてからの緩やかな減少は表現できません。
+大体同じようなプロットを作成する事ができました。しかしピークを過ぎてからの緩やかな減少は表現できていませんし、一つ一つの変数について何次までの多項式を含めるかを検討していくのは少し手間がかかります。GAMを使えばデータに存在する細やかな変化を自動的に捉えることができます（もちろん代償もあります）。
 
-なお上のプロットに必要なデータは以下のように取れるので、説明変数の各点における目的変数に対する影響を数値でも確認できます。
+
+
+### GAMの実装
+それでは `gam` がどのようにフィッティングを行っているのかを見ていきましょう。本体は最後の方に出てくる `gam.fit` なのですが、途中も少し細かく追ってみます。
 
 ```{r}
-tmp <- gam:::preplot.Gam(res_gam, terms = gam:::labels.Gam(res_gam))
-age_sm <- cbind(tmp$`s(age, 5)`$x, tmp$`s(age, 5)`$y) 
-age_sm_uniq <- unique(age_sm[order(age_sm[, 1]), ])
+### gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
+### gam::gam
+function (formula, family = gaussian, data, weights, subset, 
+    na.action, start = NULL, etastart, mustart, control = gam.control(...), 
+    model = TRUE, method = "glm.fit", x = FALSE, y = TRUE, ...) 
+{
+    ### 関数の引数を名前付きで確定。gam(wage ~ s(year, 4) + education, Wage)として与えた場合、
+    ### formula = と data = がそれぞれ保持される。
+    ### match.call returns a call in which all of the specified arguments are specified by their full names.
+    call <- match.call()
+
+    ### familyの判定
+    if (is.character(family)) 
+        family <- get(family, mode = "function", envir = parent.frame())
+    if (is.function(family)) 
+        family <- family()
+    if (is.null(family$family)) {
+        print(family)
+        stop("`family' not recognized")
+    }
+
+    ### データが指定されていない場合？
+    if (missing(data)) 
+        data <- environment(formula)
+    
+    ### 指定されている引数の取り出し
+    mf <- match.call(expand.dots = FALSE)
+    m <- match(c("formula", "data", "subset", "weights", "etastart", 
+        "mustart", "offset"), names(mf), 0L)
+    mf <- mf[c(1L, m)]
+
+    ### 指定されていない引数を指定し、stats::model.frame()の形式に仕立てる
+    mf$na.action = quote(na.pass)
+    mf$drop.unused.levels <- TRUE
+    mf[[1L]] <- quote(stats::model.frame)
 ```
 
-プロットしてみましょう。同じ線が描けます。
+ここまでは `gam` にオプションとして指定した内容に沿った処理を実行しています。
 
 ```{r}
-plot(age_sm_uniq, type = "l", xlab = "age", ylab = "s(age, 5)")
+    ### 平滑化の関数を取ってくる（s, lo, random)
+    gam.slist <- gam.smoothers()$slist
 ```
 
-```{r}
+ここで一つ `gam` ならではの処理があり、平滑化に使う関数を取り出しています。 新しい平滑化関数を指定することも出来るようですが、デフォルトは `s` 、 `lo` および `random` で、それぞれ **平滑化スプライン**、**局所回帰**、**ランダム効果としての指定**を意味しているようです。 3つめの `random` がわからなかったので調べてみたところ、これは質的変数に対する指定で、パラメータの推定においていわゆる縮小推定を行なうもののようでした。
 
+https://www.rdocumentation.org/packages/gam/versions/1.16.1/topics/random
+
+これらに接頭語として `gam` を加えた（e.g. `gam.s`）関数が平滑化のための関数として実行されます。 `gam.s` については後述します。
+
+```{r}
+    ### term を mf$formula に渡す
+    mt <- if (missing(data)) 
+        terms(formula, gam.slist)
+    else terms(formula, gam.slist, data = data)
+    mf$formula <- mt
+
+    ### ここで mf 、つまり model.frame が実行されて data.frame になる
+    ### ただし平滑化は実行されず、平滑化のパラメータは attribute として持っている
+    mf <- eval(mf, parent.frame())
+    if (missing(na.action)) {
+        naa = getOption("na.action", "na.fail")
+        na.action = get(naa)
+    }
+    mf = na.action(mf)
+    mt = attributes(mf)[["terms"]]
+```
+
+ここまで `mf` は `call` クラス、すなわち未評価の関数およびその引数を要素に持つオブジェクトでした。それが `eval` で評価されたため `stats::model.frame` が実行され、 `formula` にしたがい `data.frame` が生成された、という流れのようです（間違っていたらすみません）。
+
+
+```{r}
+    ### method の指定によって処理を分ける。 glm.fit または glm.fit.null 以外の場合はエラー
+    switch(method, model.frame = return(mf), glm.fit = 1, glm.fit.null = 1, 
+        stop("invalid `method': ", method))
+    
+    ### Y
+    Y <- model.response(mf, "any")
+
+    ### X を matrix で。
+    ### gamを実行したときのエラーメッセージ（ `non-list contrasts argument ignored` ）はここで出ている。 contrasts の指定が良くない様子。
+    X <- if (!is.empty.model(mt)) 
+      model.matrix(mt, mf, contrasts) 
+    else matrix(, NROW(Y), 0)
+
+    ### その他パラメータ（weights, offset, mustart, etastart）
+    weights <- model.weights(mf)
+    offset <- model.offset(mf)
+    if (!is.null(weights) && any(weights < 0)) 
+        stop("Negative wts not allowed")
+    if (!is.null(offset) && length(offset) != NROW(Y)) 
+        stop("Number of offsets is ", length(offset), ", should equal ", 
+            NROW(Y), " (number of observations)")
+    mustart <- model.extract(mf, "mustart")
+    etastart <- model.extract(mf, "etastart")
+
+    ### ここが本体。 gam.fit を呼び出している
+    fit <- gam.fit(x = X, y = Y, smooth.frame = mf, weights = weights, 
+        start = start, etastart = etastart, mustart = mustart, 
+        offset = offset, family = family, control = control)
+    
+    ### offset が指定されており intercept 項がある場合
+    if (length(offset) && attr(mt, "intercept") > 0) {
+        fit$null.dev <- glm.fit(x = X[, "(Intercept)", drop = FALSE], 
+            y = Y, weights = weights, offset = offset, family = family, 
+            control = control[c("epsilon", "maxit", "trace")], 
+            intercept = TRUE)$deviance
+    }
+    if (model) 
+        fit$model <- mf
+    fit$na.action <- attr(mf, "na.action")
+    if (x) 
+        fit$x <- X
+    if (!y) 
+        fit$y <- NULL
+    fit <- c(fit, list(call = call, formula = formula, terms = mt, 
+        data = data, offset = offset, control = control, method = method, 
+        contrasts = attr(X, "contrasts"), xlevels = .getXlevels(mt, 
+            mf)))
+    class(fit) <- c("Gam", "glm", "lm")
+    if (!is.null(fit$df.residual) && !(fit$df.residual > 0)) 
+        warning("Residual degrees of freedom are negative or zero.  This occurs when the sum of the parametric and nonparametric degrees of freedom exceeds the number of observations.  The model is probably too complex for the amount of data available.")
+    fit
+}
 ```
 
 
