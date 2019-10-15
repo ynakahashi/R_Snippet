@@ -11,7 +11,12 @@ output: html_document
 
 今回取り上げる一般化加法モデル（Generalized Additive Model, GAM）は、そのような複雑な関連性を表現できるよう説明変数に非線形な変換を行うもので、GLMを拡張したものとなります。ちょっと古いですが、2015年にMicrosoft RearchがKDDに出した論文[PDF](http://people.dbmi.columbia.edu/noemie/papers/15kdd.pdf)では、GAMを指して「*the gold standard for intelligibility when low-dimensional terms are considered*」と言っており、解釈性を保ちつつ高い予測精度を得ることができるモデルとしています。なおこの論文ではGAMに２次までの交互作用を追加するGA2Mという手法を提案しています。
 
-このGAMの実装について調べた内容を書き留めておきます。
+このGAMの実装について調べた内容を書き留めておきます。GAMがどういうものかとか、平滑化に関する説明は、他に良いページがありますのでそちらを参照してください。例えば：
+https://logics-of-blue.com/%E5%B9%B3%E6%BB%91%E5%8C%96%E3%82%B9%E3%83%97%E3%83%A9%E3%82%A4%E3%83%B3%E3%81%A8%E5%8A%A0%E6%B3%95%E3%83%A2%E3%83%87%E3%83%AB/
+
+http://testblog234wfhb.blogspot.com/2014/07/generalized-additive-model.html
+
+https://blog.datarobot.com/jp/2017/10/24/ga2m-and-rating-table
 
 
 ### GAMの実行結果
@@ -26,7 +31,7 @@ GAMの実装としてRでは {mgcv}が使われることが多いようですが
 
 Rによる統計的学習入門
 
-同書で用いているサンプルデータ `Wage` を使用するため、{ISLR}を同時に読み込みます。この{ISLR}パッケージは上記の本の原著である*Introduction of Statistical Learning with Applications in R*から来ているようです。またこのデータは、アメリカの東部地域における男性3000人の賃金、および年齢や婚姻状況、人種や学歴などの属性が記録されています。
+同書で用いているサンプルデータ `Wage` を使用するため、{ISLR}を同時に読み込みます。この{ISLR}パッケージは上記の本の原著である*Introduction of Statistical Learning with Applications in R*から来ているようです。またこのデータは、アメリカの大西洋岸中央部における男性3000人の賃金、および年齢や婚姻状況、人種や学歴などの属性が記録されています。
 
 
 ```{r}
