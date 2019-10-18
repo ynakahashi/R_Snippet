@@ -23,6 +23,8 @@ subroutine bakfit(x,npetc,y,w,which,spar,dof,match,nef,
 # in March 2005, to accommodate the modified sbart routine in R
 # Note that spar has changed, and we change it here to conform with
 # the smooth.spline routine in R
+# 
+#
 #INPUT
 #
 #x	double dim  n by p ; x variables, includes constant
@@ -50,6 +52,8 @@ subroutine bakfit(x,npetc,y,w,which,spar,dof,match,nef,
 #work	double 
 #	Let nk=max(nef)+2, then 
 # 	work should be (10+2*4)*nk+5*nef+5*n+15 +q double
+#
+#
 #BELOW
 #the following comments come from documentation for splsm
 #	they apply to each element of spar,dof match etc
@@ -107,7 +111,7 @@ if(npetc(4)==1)ifvar=.true.
 maxit=npetc(6)
 qrank=npetc(7)
 
-## 平滑化対象の変数だけ繰り返す
+## 平滑化対象の変数の自由度を work に入れる
 do i=1,q{work(i)=dof(i)}
 
 ## backf1 を呼び出す
@@ -140,6 +144,8 @@ onedm7=1d-7
 job=1101;info=1
 if(q==0)maxit=1
 ratio=1d0
+
+### weight の平方根をとって逆数にする
 # fix up sqy's for weighted problems.
 anyzwt=.false.
 do i=1,n{
@@ -153,6 +159,7 @@ do i=1,n{
 		anyzwt=.true.
 		}
 	}
+
 # if qrank > 0 then qr etc contain the qr decomposition
 # else bakfit computes it. 
 if(qrank==0){
@@ -162,12 +169,18 @@ if(qrank==0){
 			qr(i,j)=x(i,j)*sqwt(i)
 			}
 		}
-	do j=1,p{qpivot(j)=j}
+	do j=1,p{qpivot(j)=j} ### なんかピボット
 
 	### どこで定義されてる？
+	### https://github.com/cran/gam/blob/master/inst/ratfor/linear.r
+	### QR分解
 	call dqrdca(qr,n,n,p,qraux,qpivot,work,qrank,onedm7)
 	}
 do i=1,n{
+	### eta（fitted value）に s(i,j) を加算する
+	#s	double n by q nonlinear part of the smooth functions
+	#		used as starting values. the linear part is
+	#		irrelevant
 	eta(i)=0d0
 	for(j=1;j<=q;j=j+1){
 		eta(i)=eta(i)+s(i,j)
@@ -184,31 +197,42 @@ while ((ratio > tol )&(nit < maxit)){
 	}
 #	call dqrsl1(qr,dq,qraux,qrank,sqz,one,work(1),etal,two,three)
 #job=1101 -- computes fits, effects and beta
-	# 最小二乗法を当てはめる
+	### 最小二乗法を当てはめる
+	### https://github.com/wch/r-source/blob/trunk/src/appl/dqrsl.f
 	call dqrsl(qr,n,n,qrank,qraux,z,work(1),effect(1),beta,
 		work(1),etal,job,info)
 
 # now unsqrt the fits
 #Note: we dont have to fix up the zero weights till the end, since their fits
 #are always immaterial to the computation
+
+	### 重みの逆数で戻す
 	do i=1,n{
 		etal(i)=etal(i)*sqwti(i)
 		}
+
+	### ここで平滑化対象の変数についてループ
 	# now a single non-linear backfitting loop 
 	for(k=1;k<=q;k=k+1){
 		j=which(k)
 		do i=1,n{
+			### s を格納
 			old(i)=s(i,k)
+			### 残差に対して s を加算。理由はわからない
 			z(i)=y(i)-etal(i)-eta(i)+old(i)
 		}
-                # this uses spar to set smoothing after iteration 1
+                ### df は 0 にリセットされてしまう
+				# this uses spar to set smoothing after iteration 1
                 if(nit>1){dof(k)=0d0}
 		
 		### splsm を呼びだす
 		call splsm(x(1,j),z,w,n,match(1,k),nef(k),spar(k),
 			dof(k),s(1,k),s0,var(1,k),ifvar,work)
 		do i=1,n{
+			### eta を更新
 			eta(i)=eta(i)+s(i,k)-old(i)
+			### etal を更新
+			### s0 は double weighted mean
 			etal(i)=etal(i)+s0
 			}
 		deltaf=deltaf+dwrss(n,old,s(1,k),w)
