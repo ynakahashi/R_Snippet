@@ -3,19 +3,45 @@ title: "GAMをもう少し理解したい③"
 output: html_document
 ---
 
+前回の続きです。過去記事はこちらから。
 
+前回の記事：
+前々回の記事：
 
+### GAMの実装
 #### s.wam
 
-では `s.wam` です。これは `gam.fit` の中で `bf.call` として定義されたフィッティングのための関数で、 `s.wam` の `wam` は*weighted additive model*の意味のようです。先程少し述べたように、第二引数として `y` を受け取ります。
+では `s.wam` です。これは `gam.fit` の中で `bf.call` として定義されたフィッティングのための関数で、 `s.wam` の `wam` は*weighted additive model*の意味のようです。名前からして `gam` の本体のような気がしてきますが、先に言ってしまうと、この関数内で `bakfit` というFortranの関数を呼び出しているので、少なくともRの「 `gam` というライブラリ」の本体という意味では合っていると思います。
 
+`s.wam` は前回記事で述べたように、第二引数として `y` を受け取ります。
 
 ```{r}
 function (x, y, w, s, which, smooth.frame, maxit = 30, tol = 1e-07, 
     trace = FALSE, se = TRUE, ...) 
 ```
 
+ただしこの `s.wam` にはYそのものではなく、以下のように `z` として渡されるのでした。
 
+```{r}
+### 以下は gam.fit から再掲
+z <- eta - offset
+z[good] <- z[good] + (y - mu)[good]/mu.eta.val[good]
+
+### 中略 
+
+# eval(bf.call) これは下の表現となる
+s.wam(x, z, wz, fit$smooth, which, fit$smooth.frame, bf.maxit, 
+    bf.epsilon, trace)
+```
+
+`s.wam` では始めに `smooth.frame` に対する処理を行います。具体的には
+ - 平滑化の対象変数を抽出
+ - 指定のdigitsで丸める
+ - ソートした上でユニークなデータ数を得る
+ - 元データをラベル（数値の大小で並べかえたときの順位）に変換
+ - 行数・列数を付与
+ - 平滑化パラメータおよび自由度を付与
+という加工を、下記の処理にて実施します。
 
 ```{r}
 ### smooth.frame は data.frame なのでここが評価される
@@ -23,18 +49,55 @@ if (is.data.frame(smooth.frame)) {
     first <- TRUE
     data <- smooth.frame[, names(which), drop = FALSE]
 
-    ### 入力 x について、指定の digits で丸めた上でユニークなデータ数を得る
-    ### デフォルトでは digits は 6
-    smooth.frame <- gam.match(data)
-    dx <- as.integer(dim(x))
-    smooth.frame$n <- dx[1] # number of row（ユニーク）
+    smooth.frame <- gam.match(data) # 下で解説
+    dx <- as.integer(dim(x)) # 行列のサイズ
+    smooth.frame$n <- dx[1] # number of row
     smooth.frame$p <- dx[2] # number of column
     oldClass(data) <- NULL
+    ### 各列に対する平滑化パラメータおよび自由度
     smooth.frame$spar <- unlist(lapply(data, attr, "spar"))
     smooth.frame$df <- unlist(lapply(data, attr, "df"))
 }
 else first <- FALSE
+```
 
+上のブロックにおいて、 `gam.match(data)` では以下の結果が返ります：
+
+```{r}
+> gam.match(data)
+$o
+        s(year, 4) s(age, 5)
+   [1,]          4         1
+   [2,]          2         7
+   [3,]          1        28
+   [4,]          1        26
+   [5,]          3        33
+   [6,]          6        37
+
+### 中略
+
+$nef
+s(year, 4)  s(age, 5) 
+         7         61 
+```
+
+これは `gam.match` という関数の、下記の部分が評価された結果です。
+
+```{r}
+### gam.match から
+xr <- signif(as.vector(x), 6) # signif 関数は指定の有効桁で丸める。デフォルトは6
+sx <- unique(sort(xr)) # それをソートしてユニークにする
+nef <- as.integer(length(sx)) # ユニークなデータ数
+if (nef <= 3) 
+    stop("A smoothing variable encountered with 3 or less unique values; at least 4 needed")
+o <- match(xr, sx, nef + 1) # 元のデータをラベルに変更する。 +1 は欠損用。
+o[is.na(o)] <- nef + 1
+```
+
+`gam.match` の結果が `smooth.frame` に代入されているので、この時点で `smooth.frame` は数値の大小関係のみを持っていることになります。
+
+
+```{r}
 ### 後でFortranに渡すために必要な指定
 storage.mode(tol) <- "double"
 storage.mode(maxit) <- "integer"
