@@ -44,7 +44,7 @@ s.wam(x, z, wz, fit$smooth, which, fit$smooth.frame, bf.maxit,
 という加工を、下記の処理にて実施します。
 
 ```{r}
-### smooth.frame は data.frame なのでここが評価される
+### smooth.frame はループ初回は data.frame なのでここが評価される
 if (is.data.frame(smooth.frame)) {
     first <- TRUE
     data <- smooth.frame[, names(which), drop = FALSE]
@@ -94,8 +94,9 @@ o <- match(xr, sx, nef + 1) # 元のデータをラベルに変更する。 +1 �
 o[is.na(o)] <- nef + 1
 ```
 
-`gam.match` の結果が `smooth.frame` に代入されているので、この時点で `smooth.frame` は数値の大小関係のみを持っていることになります。
+`gam.match` の結果が `smooth.frame` に代入されているので、この時点で `smooth.frame` は数値の大小関係のみを持っていることになります。また一連の処理で `smooth.frame` は `data.frame` ではなくなるため、ループの２回目以降ではこの処理はスキップされます。
 
+次のブロックは後ろの工程でFortranの関数に渡すための準備となります。
 
 ```{r}
 ### 後でFortranに渡すために必要な指定
@@ -107,12 +108,19 @@ storage.mode(y) <- "double"
 storage.mode(w) <- "double"
 p <- smooth.frame$p
 n <- smooth.frame$n
+```
 
+また以下のコードでは、先程の `smooth.frame` 同様に有効桁を6桁に丸めます。
+
+```{r}
 ### 平滑化対象の変数を6桁に丸める
 for (ich in which) x[, ich] = signif(x[, ich], 6)
+```
 
+以上で準備が整いました。以下が `s.wam` の本体になります。 `.Fortran` でFortranで書かれた `bakfit` というモジュールを呼び出します。
+
+```{r}
 ### ここが本体。Fortran で書かれた bakfit を呼び出す
-### bakfit の中で平滑化対象の変数に対して順番に処理をかける
 fit <- .Fortran("bakfit", x, npetc = as.integer(c(n, p, length(which), 
     se, 0, maxit, 0)), y = y, w = w, which, spar = as.double(smooth.frame$spar), 
     df = as.double(smooth.frame$df), as.integer(smooth.frame$o), 
@@ -121,21 +129,46 @@ fit <- .Fortran("bakfit", x, npetc = as.integer(c(n, p, length(which),
     qraux = double(p), qpivot = as.integer(1:p), effects = double(n), 
     double((10 + 2 * 4 + 5) * (max(smooth.frame$nef) + 2) + 
         15 * n + 15 + length(which)), PACKAGE = "gam")
+```
+
+さて、この `bakfit` ですが、ソースコードとしてはおそらく[こちら](
+https://github.com/cran/gam/blob/master/src/backfit.f)
+が正しいのかなぁと思うのですが、 `gam` をインストールする際に同時にダウンロードされる以下のファイル：
+
+/Users/hogehoge/Library/R/3.6/library/gam/ratfor/backfit.r
+
+の方が説明もあってわかりやすいので、こちらベースに進めます。
 
 
-nit <- fit$npetc[5]
-qrank <- fit$npetc[7]
+#### bakfit
+
+
+
+
+
+
+
+```{r}
+### s.wam の残りの部分
+nit <- fit$npetc[5] # number of iteration
+qrank <- fit$npetc[7] # qrank
+
+### nit が maxit と同じであった場合、収束していないことを警告
 if ((nit == maxit) & maxit > 1) 
     warning(paste("s.wam convergence not obtained in ", maxit, 
         " iterations"))
+
+### first == T の場合、spar を加えて FALSE にして返す
+### ループ２回目以降は評価されない
 if (first) {
     smooth.frame$spar <- fit$spar
     first <- FALSE
 }
-names(fit$df) <- dimnames(s)[[2]]
-names(fit$beta) <- labels(x)[[2]]
+
+names(fit$df) <- dimnames(s)[[2]] # 平滑化対象変数の列名
+names(fit$beta) <- labels(x)[[2]] # 説明変数
 qrx <- structure(list(qr = fit$qr, qraux = fit$qraux, rank = qrank, 
-    pivot = fit$qpivot, tol = 1e-07), class = "qr")
+    pivot = fit$qpivot, tol = 1e-07), class = "qr") # 属性を指定しながらオブジェクトを作成
 effects <- fit$effects
 r1 <- seq(len = qrx$rank)
 dn <- colnames(x)
@@ -159,6 +192,7 @@ c(list(smooth.frame = smooth.frame), rl)
 
 
 ```{r}
+### gam.fit に戻ってきた
 fitqr <- fit$qr
 xxnames <- xnames[fitqr$pivot]
 nr <- min(sum(good), nvars)
