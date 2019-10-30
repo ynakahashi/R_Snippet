@@ -11,7 +11,99 @@ output: html_document
 ### GAMの実装
 #### s.wam
 
-では `s.wam` です。これは `gam.fit` の中で `bf.call` として定義されたフィッティングのための関数で、 `s.wam` の `wam` は*weighted additive model*の意味のようです。名前からして `gam` の本体のような気がしてきますが、先に言ってしまうとこの関数内で `bakfit` というFortranの関数を呼び出しているので、少なくともRの「 `gam` というライブラリの本体」という意味では合っていると思います。
+`s.wam` は `gam.fit` の中で `bf.call` として定義されたフィッティングのための関数で、 `s.wam` の `wam` は*weighted additive model*の意味のようです。名前からして `gam` の本体のような気がしてきますが、先に言ってしまうとこの関数内で `bakfit` というFortranの関数を呼び出しているので、少なくともRの「 `gam` というライブラリの本体」という意味では合っていると思います。
+
+`s.wam` の説明に入る前に、見通しを良くするために関数全体をさっと眺めてみましょう。 `s.wam` はざっくりと以下の４つの処理に分けることができそうです：
+
+ 1. 平滑化の対象変数について元のデータを順位に置き換え、smooth.frameを再定義する
+ 2. 後でFortranに渡すために必要な指定を行う
+ 3. Fortran で書かれた bakfit を呼び出す（本体）
+ 4. 後処理
+
+```{r}
+### gam::s.wam
+function (x, y, w, s, which, smooth.frame, maxit = 30, tol = 1e-07, 
+    trace = FALSE, se = TRUE, ...) 
+{
+    ### 1. 平滑化の対象変数について元のデータを順位に置き換え、smooth.frameを再定義する
+    if (is.data.frame(smooth.frame)) {
+        first <- TRUE
+        data <- smooth.frame[, names(which), drop = FALSE]
+
+        smooth.frame <- gam.match(data)
+        dx <- as.integer(dim(x))
+        smooth.frame$n <- dx[1] 
+        smooth.frame$p <- dx[2] 
+        oldClass(data) <- NULL
+        smooth.frame$spar <- unlist(lapply(data, attr, "spar"))
+        smooth.frame$df <- unlist(lapply(data, attr, "df"))
+    }
+    else first <- FALSE
+
+    ### 2. 後でFortranに渡すために必要な指定を行う
+    storage.mode(tol) <- "double"
+    storage.mode(maxit) <- "integer"
+    which <- unlist(which)
+    storage.mode(which) <- "integer"
+    storage.mode(y) <- "double"
+    storage.mode(w) <- "double"
+    p <- smooth.frame$p
+    n <- smooth.frame$n
+
+    for (ich in which) x[, ich] = signif(x[, ich], 6)
+
+    ### 3. Fortran で書かれた bakfit を呼び出す（本体）
+    fit <- .Fortran("bakfit", x, npetc = as.integer(c(n, p, length(which), 
+        se, 0, maxit, 0)), y = y, w = w, which, spar = as.double(smooth.frame$spar), 
+        df = as.double(smooth.frame$df), as.integer(smooth.frame$o), 
+        as.integer(smooth.frame$nef), etal = double(n), s = s, 
+        eta = double(n), beta = double(p), var = s, tol, qr = x, 
+        qraux = double(p), qpivot = as.integer(1:p), effects = double(n), 
+        double((10 + 2 * 4 + 5) * (max(smooth.frame$nef) + 2) + 
+            15 * n + 15 + length(which)), PACKAGE = "gam")
+    
+    ### 4. 後処理
+    #### 収束に関する警告
+    nit <- fit$npetc[5]
+    qrank <- fit$npetc[7]
+    if ((nit == maxit) & maxit > 1) 
+        warning(paste("s.wam convergence not obtained in ", maxit, 
+            " iterations"))
+
+    #### ループの２回目以降は序盤の処理をスキップさせる
+    if (first) {
+        smooth.frame$spar <- fit$spar
+        first <- FALSE
+    }
+
+    #### 最終的な返り値となる rl に情報を追加していくための準備
+    names(fit$df) <- dimnames(s)[[2]]
+    names(fit$beta) <- labels(x)[[2]]
+    qrx <- structure(list(qr = fit$qr, qraux = fit$qraux, rank = qrank, 
+        pivot = fit$qpivot, tol = 1e-07), class = "qr")
+    effects <- fit$effects
+    r1 <- seq(len = qrx$rank)
+    dn <- colnames(x)
+    if (is.null(dn)) 
+        dn <- paste("x", 1:p, sep = "")
+    names(effects) <- c(dn[qrx$pivot[r1]], rep.int("", n - qrx$rank))
+
+    #### rl を生成
+    rl <- list(coefficients = fit$beta, residuals = fit$y - fit$eta, 
+        fitted.values = fit$eta, effects = effects, weights = w, 
+        rank = qrank, assign = attr(x, "assign"), qr = qrx, smooth = fit$s, 
+        nl.df = fit$df - 1)
+    rl$df.residual <- n - qrank - sum(rl$nl.df) - sum(fit$w == 
+        0)
+    if (se) 
+        rl <- c(rl, list(var = fit$var))
+    c(list(smooth.frame = smooth.frame), rl)
+}
+```
+
+以下、一つずつ見ていきましょう。
+
+##### 1. 平滑化の対象変数について元のデータを順位に置き換え、smooth.frameを再定義する
 
 `s.wam` は前回記事で述べたように、第二引数として `y` を受け取ります。
 
@@ -118,6 +210,8 @@ o[is.na(o)] <- nef + 1
 
 `gam.match` の結果が `smooth.frame` に代入されているので、この時点で `smooth.frame` は数値の大小関係のみを持っていることになり、また一連の処理で `smooth.frame` は `data.frame` ではなくなるため、ループの２回目以降ではこの処理はスキップされます。
 
+
+##### 2. 後でFortranに渡すために必要な指定を行う
 次のブロックは後ろの工程でFortranの関数に渡すための準備となります。
 
 ```{r}
@@ -139,6 +233,8 @@ n <- smooth.frame$n
 for (ich in which) x[, ich] = signif(x[, ich], 6)
 ```
 
+
+##### 3. Fortran で書かれた bakfit を呼び出す（本体）
 以上で準備が整いました。以下が `s.wam` の本体になります。 `.Fortran` でFortranで書かれた `bakfit` というモジュールを呼び出します。
 
 ```{r}
@@ -159,19 +255,12 @@ https://github.com/cran/gam/blob/master/src/backfit.f)
 
 /Users/hogehoge/Library/R/3.6/library/gam/ratfor/backfit.r
 
-の方が説明もあってわかりやすいので、こちらベースに進めます。
+の方が説明もあってわかりやすいので、こちらベースに進めたいと思いますが、まずは残りの工程を見ていきます。
 
-
-#### bakfit
-
-
-
-
-
-
+##### 4. 後処理
+`s.wam` の最後の部分です。
 
 ```{r}
-### s.wam の残りの部分
 nit <- fit$npetc[5] # number of iteration
 qrank <- fit$npetc[7] # qrank
 
@@ -197,6 +286,8 @@ dn <- colnames(x)
 if (is.null(dn)) 
     dn <- paste("x", 1:p, sep = "")
 names(effects) <- c(dn[qrx$pivot[r1]], rep.int("", n - qrx$rank))
+
+#### 最終的な返り値である rl を生成
 rl <- list(coefficients = fit$beta, residuals = fit$y - fit$eta, 
     fitted.values = fit$eta, effects = effects, weights = w, 
     rank = qrank, assign = attr(x, "assign"), qr = qrx, smooth = fit$s, 
@@ -205,6 +296,8 @@ rl$df.residual <- n - qrank - sum(rl$nl.df) - sum(fit$w ==
     0)
 if (se) 
     rl <- c(rl, list(var = fit$var))
+
+#### return
 c(list(smooth.frame = smooth.frame), rl)
 ```
 
