@@ -10,8 +10,7 @@ output: html_document
 
 ### GAMの実装
 #### s.wam
-
-`s.wam` は `gam.fit` の中で `bf.call` として定義されたフィッティングのための関数で、 `s.wam` の `wam` は*weighted additive model*の意味のようです。名前からして `gam` の本体のような気がしてきますが、先に言ってしまうとこの関数内で `bakfit` というFortranの関数を呼び出しているので、少なくともRの「 `gam` というライブラリの本体」という意味では合っていると思います。
+`s.wam` は `gam.fit` の中で `bf.call` として定義されたフィッティングのための関数で、 `s.wam` の `wam` は*weighted additive model*の意味のようです。名前からして `gam` の本体のような気がしてきますが、先に言ってしまうとこの関数内で `bakfit` というFortranの関数を呼び出しており、少なくともRの「 `gam` というライブラリの本体」という意味では合っているのではないでしょうか。
 
 `s.wam` の説明に入る前に、見通しを良くするために関数全体をさっと眺めてみましょう。 `s.wam` はざっくりと以下の４つの処理に分けることができそうです：
 
@@ -104,28 +103,6 @@ function (x, y, w, s, which, smooth.frame, maxit = 30, tol = 1e-07,
 以下、一つずつ見ていきましょう。
 
 ##### 1. 平滑化の対象変数について元のデータを順位に置き換え、smooth.frameを再定義する
-
-`s.wam` は前回記事で述べたように、第二引数として `y` を受け取ります。
-
-```{r}
-function (x, y, w, s, which, smooth.frame, maxit = 30, tol = 1e-07, 
-    trace = FALSE, se = TRUE, ...) 
-```
-
-ただしこの `s.wam` にはYそのものではなく、以下のように `z` として渡されるのでした。
-
-```{r}
-### 以下は gam.fit から再掲
-z <- eta - offset
-z[good] <- z[good] + (y - mu)[good]/mu.eta.val[good]
-
-### 中略 
-
-# eval(bf.call) ← これは下の表現となる
-s.wam(x, z, wz, fit$smooth, which, fit$smooth.frame, bf.maxit, 
-    bf.epsilon, trace)
-```
-
 `s.wam` では始めに `smooth.frame` に対する処理を行います。具体的には
  - 平滑化の対象変数を抽出
  - 指定のdigitsで丸める
@@ -153,7 +130,7 @@ if (is.data.frame(smooth.frame)) {
 else first <- FALSE
 ```
 
-上のブロックにおいて、 `gam.match(data)` では以下の結果が返ります：
+上のブロックのポイントは `gam.match` という関数で、 `gam.match(data)` とすると以下の結果が返ります：
 
 ```{r}
 > gam.match(data)
@@ -186,7 +163,7 @@ s(year, 4)  s(age, 5)
 376662       2008        54
 ```
 
-これは `gam.match` という関数の、下記の部分が評価された結果です。
+これは `gam.match` という関数において下記の部分が評価された結果です。
 
 ```{r}
 ### gam.match から
@@ -206,9 +183,8 @@ o[is.na(o)] <- nef + 1
 [1] 4 2 1 1 3 6
 ```
 
-この結果は `xr` の値が `sx` の何番目に位置するかを表わしていますが、この `sx` は数値をソートしてユニークにしたものなので、順位に変換していることになります。
-
-`gam.match` の結果が `smooth.frame` に代入されているので、この時点で `smooth.frame` は数値の大小関係のみを持っていることになり、また一連の処理で `smooth.frame` は `data.frame` ではなくなるため、ループの２回目以降ではこの処理はスキップされます。
+これは `xr` の値が `sx` の何番目に位置するかを表わしていますが、この `sx` は数値をソートしてユニークにしたものなので、順位に変換していることになります。
+また `gam.match` の結果を `smooth.frame` に代入されているので、この時点で `smooth.frame` は数値の大小関係のみを持つことになり、また一連の処理で `smooth.frame` は `data.frame` ではなくなるため、ループの２回目以降ではこの処理はスキップされます。
 
 
 ##### 2. 後でFortranに渡すために必要な指定を行う
@@ -303,6 +279,29 @@ c(list(smooth.frame = smooth.frame), rl)
 
 
 
+
+
+----- 以下は必要になったら -----
+前回記事で述べたように、 `s.wam` は第二引数として `y` を受け取ります。
+
+```{r}
+function (x, y, w, s, which, smooth.frame, maxit = 30, tol = 1e-07, 
+    trace = FALSE, se = TRUE, ...) 
+```
+
+ただしこの `s.wam` にはYそのものではなく、以下のように `z` として渡されるのでした。
+
+```{r}
+### 以下は gam.fit から再掲
+z <- eta - offset
+z[good] <- z[good] + (y - mu)[good]/mu.eta.val[good]
+
+### 中略 
+
+# eval(bf.call) ← これは下の表現となる
+s.wam(x, z, wz, fit$smooth, which, fit$smooth.frame, bf.maxit, 
+    bf.epsilon, trace)
+```
 
 
 
