@@ -111,6 +111,8 @@ function (x, y, smooth.frame, weights = rep(1, nobs), start = NULL,
                 paste(gam.wlist[sbf], "wam", sep = ".")
             else "general.wam"
         }
+
+        ### bf にオプション部分を文字列で結合
         bf.call <- parse(text = paste(bf, "(x, z, wz, fit$smooth, which, fit$smooth.frame,bf.maxit,bf.epsilon, trace)", 
             sep = ""))[[1]]
         s <- matrix(0, length(y), length(which))
@@ -118,15 +120,19 @@ function (x, y, smooth.frame, weights = rep(1, nobs), start = NULL,
         fit <- list(smooth = s, smooth.frame = smooth.frame)
     }
 
-    ### backfit 向けの call 生成
+    ### 平滑化しない場合。 通常の lm.wfit に渡す。なお general.wam でも lm.wfit が使われる。
+    ### ここの深掘りは以前のGLMの記事を紹介
     else {
         bf.call <- expression(lm.wfit(x, z, wz, method = "qr", 
             singular.ok = TRUE))
         bf <- "lm.wfit"
     }
 
+    ### ここから反復に入る
     old.dev <- 10 * new.dev + 10
     for (iter in 1:maxit) {
+
+        ### weight が 0 のデータは除外する
         good <- weights > 0
         varmu <- variance(mu)
         if (any(is.na(varmu[good]))) 
@@ -138,22 +144,23 @@ function (x, y, smooth.frame, weights = rep(1, nobs), start = NULL,
             stop("NAs in d(mu)/d(eta)")
         good <- (weights > 0) & (mu.eta.val != 0)
 
-        ### z を生成。ただし bf.call 、すなわち lm.wfit で二番目の引数は y なので、この z は目的変数の意味
+        ### z を生成。ただし bf.call で二番目の引数は y なので、この z は目的変数の意味
         z <- eta - offset
         z[good] <- z[good] + (y - mu)[good]/mu.eta.val[good]
 
-        ### wz を生成。 lm.wfit における重み。今回のケースでは無視して良い
+        ### wz を生成。重み。今回のケースでは無視して良い
         wz <- weights
         wz[!good] <- 0
         wz[good] <- wz[good] * mu.eta.val[good]^2/varmu[good]
 
-        ### ここで lm.wfit が呼ばれ、 backfit が行われる
+        ### ここで bf.call が評価される。 s.wam の場合、bakfit が呼ばれる。
+        ### bf.call で指定されている smooth.frame はこの時点では単なる data.frame 
         fit <- eval(bf.call)
 
-        ### オフセットを加算する
+        ### 予測値にオフセットを加算する
         eta <- fit$fitted.values + offset
 
-        ### eta から mu に持ってくる
+        ### eta から mu に変換する
         mu <- linkinv(eta)
 
         ### デビアンスを更新

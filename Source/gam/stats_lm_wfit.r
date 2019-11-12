@@ -48,7 +48,11 @@ function (x, y, w, offset = NULL, method = "qr", tol = 1e-07,
             fitted.values = 0 * y, weights = w, rank = 0L, df.residual = 0L))
     }
     wts <- sqrt(w)
+
+    ### C_Cdqrlsを呼ぶ。 glm.fit の中では fit に代入するために呼ばれているが、ここでは z 、すなわち目的変数に代入する
     z <- .Call(C_Cdqrls, x * wts, y * wts, tol, FALSE)
+
+
     if (!singular.ok && z$rank < p) 
         stop("singular fit encountered")
     coef <- z$coefficients

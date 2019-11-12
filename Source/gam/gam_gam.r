@@ -42,7 +42,7 @@ function (formula, family = gaussian, data, weights, subset,
     else terms(formula, gam.slist, data = data)
     mf$formula <- mt
 
-    ### ここで mf 、つまり model.frame が実行されるて data.frame になる
+    ### ここで mf 、つまり model.frame が実行されて data.frame になる
     ### ただし平滑化は実行されず、平滑化のパラメータは attribute として持っている
     mf <- eval(mf, parent.frame())
     if (missing(na.action)) {

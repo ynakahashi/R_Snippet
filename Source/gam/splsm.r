@@ -1,3 +1,4 @@
+#### sknotl
 subroutine sknotl(x,n,knot,k)
 implicit double precision(a-h,o-z) 
 double precision x(n),knot(n+6),a1,a2,a3,a4
@@ -31,6 +32,8 @@ integer     n,k,ndk,j
 
 return
 end
+
+#### splsm
 subroutine splsm(x,y,w,n,match,nef,spar,dof,smo,s0,cov,ifcov,work)
 #This subroutine performs a smoothing spline fit
 # This was written by Trevor Hastie in 1990
@@ -91,6 +94,7 @@ call splsm1(x,y,w,n,match,nef,spar,dof,smo,s0,cov,ifcov,
 return
 end
 
+#### splsm1
 subroutine splsm1(x,y,w,n,match,nef,spar,dof,smo,s0,lev,ifcov,
 		xin,yin,win,knot,
 		work)
@@ -129,6 +133,8 @@ call splsm2(x,y,w,n,match,nef,spar,dof,smo,s0,lev,ifcov,
 
 return
 end
+
+#### splsm2
 subroutine splsm2(x,y,w,n,match,nef,spar,dof,smo,s0,lev,ifcov,
 		xin,yin,win,knot,
 		coef,sout,levout,xwy,
