@@ -175,6 +175,7 @@ do i=1,n{
 		}
 	}
 
+### qrank が 0 のときは、x に重みを加えた上で QR 分解する
 # if qrank > 0 then qr etc contain the qr decomposition
 # else bakfit computes it. 
 if(qrank==0){
@@ -191,8 +192,10 @@ if(qrank==0){
 	### https://github.com/cran/gam/blob/master/inst/ratfor/linear.r
 	call dqrdca(qr,n,n,p,qraux,qpivot,work,qrank,onedm7)
 	}
+
+### eta に 非線形項 s(i,j) を加算する
+### ただしここで eta は fitted value ではなく 0 スタート
 do i=1,n{ # 全データ
-	### eta（fitted value）に s(i,j) を加算する
 	#s	double n by q nonlinear part of the smooth functions
 	#		used as starting values. the linear part is
 	#		irrelevant
@@ -202,6 +205,7 @@ do i=1,n{ # 全データ
 		}
 	}
 
+
 ### ループ開始
 nit=0
 while ((ratio > tol )&(nit < maxit)){ # ratio のデフォルトは 1.0 。 tol は多分 0.0005
@@ -209,15 +213,20 @@ while ((ratio > tol )&(nit < maxit)){ # ratio のデフォルトは 1.0 。 tol 
 	deltaf=0d0
 	nit=nit+1 # イテレータに +1
 
-	# 残差に重みを乗じて z と old を更新
+	### まずは Linear part + error 部分に最小二乗法を当てはめる
+
+	### y から非線形項を減じたもの（Linear part + error）に重みを乗じて z を更新(これを y として dqrsl に渡す)
+	# etal を old に格納。ループ１回目の時点では etal は Null？
 	do i=1,n{
 		z(i)=(y(i)-eta(i))*sqwt(i) 
 		old(i)=etal(i)
 	}
-#	call dqrsl1(qr,dq,qraux,qrank,sqz,one,work(1),etal,two,three)
-#job=1101 -- computes fits, effects and beta
-	### 最小二乗法を当てはめる
+
 	### https://github.com/wch/r-source/blob/trunk/src/appl/dqrsl.f
+	### dqrsl の6個目の引数として z を渡しているが、これは y になる
+	### etal は11番目の引数として渡しているが、これは xb 。
+	#	call dqrsl1(qr,dq,qraux,qrank,sqz,one,work(1),etal,two,three)
+	#job=1101 -- computes fits, effects and beta
 	call dqrsl(qr,n,n,qrank,qraux,z,work(1),effect(1),beta,
 		work(1),etal,job,info)
 
@@ -226,6 +235,8 @@ while ((ratio > tol )&(nit < maxit)){ # ratio のデフォルトは 1.0 。 tol 
 #are always immaterial to the computation
 
 	### 重みの逆数で戻し、 etal を更新
+	### etal は y の予測値の線形部分
+	#etal	double length n linear component of the fit
 	do i=1,n{
 		etal(i)=etal(i)*sqwti(i)
 		}
@@ -235,9 +246,10 @@ while ((ratio > tol )&(nit < maxit)){ # ratio のデフォルトは 1.0 。 tol 
 	for(k=1;k<=q;k=k+1){ # 平滑化対象の変数ごとに
 		j=which(k)
 		do i=1,n{
-			### old を更新
+			### old に k 番目の平滑化対象変数の値を入れる
 			old(i)=s(i,k)
-			### y から etal と eta を引き、非線形部分 old を足しているので、残差 + k番目の平滑化変数部分になっている
+			### y から etal (Linear part)と eta (Nonlinear part) を引き、old (k 番目の Nonlinear part) を足している
+			### 残差 + k 番目の平滑化変数の値になっている
 			z(i)=y(i)-etal(i)-eta(i)+old(i)
 		}
                 ### df は 0 にリセットされてしまう
@@ -246,28 +258,34 @@ while ((ratio > tol )&(nit < maxit)){ # ratio のデフォルトは 1.0 。 tol 
 		
 		### splsm を呼びだす
 		### 切片と k 番目の平滑化変数を x として渡す
+		### 9番目の引数が平滑化変数（splsm 内では smo）なので s が更新される
 		call splsm(x(1,j),z,w,n,match(1,k),nef(k),spar(k),
 			dof(k),s(1,k),s0,var(1,k),ifvar,work)
 		### 	
 		do i=1,n{ # データごとに
-			### eta を更新(古い eta にk番目の非線形部分を加算して、古い非線形部分を減じる)
+			### eta を更新
+			### 古い eta にk番目の非線形部分を加算して、古い非線形部分を減じる)
 			eta(i)=eta(i)+s(i,k)-old(i)
 			### etal を更新(古い etal に s0 を乗じる。)
 			### s0 は weighted mean of y
 			etal(i)=etal(i)+s0
 			}
+		### deltaf を更新（while ループの打ち切り判定）
 		deltaf=deltaf+dwrss(n,old,s(1,k),w)
-		}
+		} # ここまで for ループ
+	
+	### normf の更新（while ループの打ち切り判定）
 	normf=0d0
 	do i=1,n{
 		normf=normf+w(i)*eta(i)*eta(i)
 		}
+	### ratio（while ループの判定に使われる）を計算
 	if(normf>0d0){
 		ratio=dsqrt(deltaf/normf)
 		}
 	 else {ratio = 0d0}
 #         call DBLEPR("ratio",-1,ratio,1)
-	}
+	} # ここまで while ループ
 #now package up the results
 do j=1,p {work(j)=beta(j)}
 do j=1,p {beta(qpivot(j))=work(j)}
@@ -281,7 +299,8 @@ if(anyzwt){
 			}
 		}
 	}
-		
+
+### 非線形項 + 線形項として eta を再定義
 do i=1,n
 	eta(i)=eta(i)+etal(i)
 	
