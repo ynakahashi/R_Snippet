@@ -38,12 +38,14 @@ C compute the coefficients coef() of estimated smooth
       do 8 i=1,(nk-3)
  8       abd(1,i+3) = hs3(i)+lambda*sg3(i)
 c     factorize banded matrix abd:
+c     バンド行列の分解
       call dpbfa(abd,ld4,nk,3,info)
       if(info.ne.0) then
 C	 matrix could not be factorized -> ier := info
 	 return
       endif
 c     solve linear system (from factorize abd):
+c     dpbfa で分解した行列を用いて線形システム（連立一次方程式）を解く
       call dpbsl(abd,ld4,nk,3,coef)
 C     Value of smooth at the data points
       icoef = 1
