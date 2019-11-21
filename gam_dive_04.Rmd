@@ -2,116 +2,45 @@
 title: "GAMをもう少し理解したい④"
 output: html_document
 ---
+前回の続きです。過去記事はこちらから。
+
+
+[:contents]
 
 ### GAMの実装
-#### backfit.r
+#### backfit
 ##### bakfit
 
+さて `bakfit` ですが、このサブルーチンは***バックフィッティング***というアルゴリズムを定義しています。このアルゴリズムは、簡単に言えば「関心のある平滑化対象変数を残差に対して順番にフィッティングしていく」方法です。Wikipediaの[バックフィッティングのページ](https://en.wikipedia.org/wiki/Backfitting_algorithm)からアルゴリズムの部分について抜粋してきましょう：
+
+ここで画像を入れる
+
+ポイントは４行目の (a) のところで、 `[tex:Smooth[{y_{i} - \hat{\alpha} - \sum_{k \neq j}\hat{f}(x_{ij})}_{1}^{N}]]` とあるように、目的変数から定数部（線形部分）および関心のある平滑化対象変数"**以外**"（非線形部分）を引くことで、平滑化対象変数で説明される部分と誤差で構成される部分のみを残し、そこで平滑化していることがわかります。これを平滑化対象となる変数全てについて収束するまで順次繰り返す、というのがバックフィッティングの流れです。
+
+ちなみにこのバックフィッティング、Wikipediaの[ページ](https://en.wikipedia.org/wiki/Backfitting_algorithm)では以下のような説明があります：
+
+> the backfitting algorithm is equivalent to the Gauss–Seidel method algorithm for solving a certain linear system of equations.
+
+さらにガウス-ザイデル法について調べると（[こちら](https://en.wikipedia.org/wiki/Gauss%E2%80%93Seidel_method)）、これはn元の連立一次方程式を反復的に解くための手法であることが解説されているのですが、その中で以下の記述があります：
+
+> The Gauss–Seidel method now solves the left hand side of this expression for x, using previous value for x on the right hand side.
+
+で、これは以下のように解くことができます：
+
+[tex: {\displaystyle x_{i}^{(k+1)}={\frac {1}{a_{ii}}}\left(b_{i}-\sum _{j=1}^{i-1}a_{ij}x_{j}^{(k+1)}-\sum _{j=i+1}^{n}a_{ij}x_{j}^{(k)}\right),\quad i=1,2,\dots ,n.}]
+
+ここで括弧の中に着目すると$b$から$ax$が順次引かれている（二項目と三項目）のですが、総和記号のインデックスには$i$が含まれていません。つまり更新の対象である$i$番目の$x$**以外**を順番に引いており、バックフィッティングと同じような計算になっていることがわかります。なお括弧の中の三項目は添え字が `(k)` になっていますが、二項目では `(k+1)` になっており、更新後の$x$を直接使っていることがわかります。さらにちなみに、ここで逐次更新するのではなく一度全ての解を求めてから一斉に更新する方法をヤコビ法といいます。
+
+では上記のアルゴリズムがどのように実装されているのかを確認してみましょう。前回同様まずは `bakfit` の処理全体をさっと眺めて見通しを良くします。 `bakfit` は
+
+
+
+
+
 ```{fortran}
-#### bakfit
 subroutine bakfit(x,npetc,y,w,which,spar,dof,match,nef,
 			etal,s,eta,beta,var,tol,
 			qr,qraux,qpivot,effect,work)
-#integer npetc(7)
-#1:n
-#2:p
-#3:q
-#4:ifvar
-#5:nit
-#6:maxit
-#7:qrank
-#subroutine bakfit(x,n,p,y,w,q,which,spar,dof,match,nef,
-#			etal,s,eta,beta,var,ifvar,tol,nit,maxit,
-#			qr,qraux,qrank,qpivot,work)
-#This subroutine fits an additive spline fit to y
-#All arguments are either double precision or integer
-
-
-# bakfit uses the modified backfitting algorithm described in Buja, Hastie 
-# and Tibshirani, Annals of Statistics, 1989. It calls splsm, and some
-# linpack based routines
-
-
-# This was written by Trevor Hastie in 1990
-# It has been modified from the S3 version by Trevor Hastie
-# in March 2005, to accommodate the modified sbart routine in R
-# Note that spar has changed, and we change it here to conform with
-# the smooth.spline routine in R
-
-
-#INPUT
-#
-#x	double dim  n by p ; x variables, includes constant
-#n	integer number of rows in x
-#p	integer number of columns of x
-#y	double length n	; y variable for smoothing
-#w	double length n ; prior weights for smoothing, > 0
-#q	integer number of nonlinear terms
-#which 	integer length q indices of columns of x for nonlinear fits
-#spar	double length q spars for smoothing; see below
-#dof	double length q dof for/from smoothing; see below
-#match 	integer n by q  matrix of match'es; see below
-#nef	integer q vector of nef's; see below
-#s	double n by q nonlinear part of the smooth functions
-#		used as starting values. the linear part is
-#		irrelevant
-#ifvar	logical should the variance information be computed
-#tol	double tolerance for backfitting convergence; 0.0005 is good
-#maxit	integer maximum number of iterations; 15 is good
-#qr	double n by p weighted qr decomposition of x
-#qraux 	double p belongs with qr
-#qrank	integer rank of x ; if qrank=0, then bakfit computes qr and qraux
-#qpivot	integer p the columns of qr are rearranged according to pivot
-#effec  double n effect vector
-#work	double 
-#	Let nk=max(nef)+2, then 
-# 	work should be (10+2*4)*nk+5*nef+5*n+15 +q double
-
-
-#BELOW
-#
-#the following comments come from documentation for splsm
-#	they apply to each element of spar,dof match etc
-#spar	double smoothing parameter -1.5 <spar<1.5; default is 1
-#dof	double  equivalent degrees of freedom
-#		if dof is 0, spar is used
-#               if 0< dof <1, dof = 1                         
-#		if dof >=1, dof is used
-#		note: dof does not use the constant term
-#match 	integer length n -- in S language x[i] == sort(unique(x)[match[i]]
-#		match is produced by subroutine namat
-#nef	number of unique elements in x; so match has values between 1 and nef+1
-#		missing data are given the match number nef+1
-#work	double workspace of length (10+2*4)*(nef+2)+5*nef+n+15
-
-
-#OUTPUT
-#
-#x,y,w,n,p,which,q,maxit,match,nef  are untouched
-#spar	for each element of spar:
-# 	if spar was 0 and dof was 0, then spar is that spar 
-#			that minimized gcv
-#	if spar was 0 and dof > 0, then spar is that which achieves dof
-#dof	the dof of the fitted smooth. Note: even if dof was given
-#		as 4, it will be returned as say 3.995 which is what
-#		spar produces
-#etal	double length n linear component of the fit
-#s	double n by q nonlinear part of the smooth functions
-#eta	double length n fitted values
-#beta	double length p linear coefficients
-#       So, the centered fitted functions are:
-#			 b(j)*(x(i,j)-mean(x(.,j)) +s(i,j)
-#		where j is an element of which
-#var	double n by q 
-#	if ifvar was .true.
-#		the unscaled variance elements for the NONLINEAR
-#		and UNIQUE part of s, in the order of sort(unique(x))
-#		var is lev(i)/w(i) -h(i)/w where h(i) is the hat element from
-#		the simple weighted least squares fit. This is  used in gamcov
-#
-#nit	number of iterations used
-#qr etc the qr is returned
-
 implicit double precision(a-h,o-z)
 logical ifvar
 integer npetc(7),iter
@@ -127,10 +56,8 @@ if(npetc(4)==1)ifvar=.true.
 maxit=npetc(6)
 qrank=npetc(7)
 
-## 平滑化対象の変数の自由度を work に入れる
 do i=1,q{work(i)=dof(i)}
 
-## backf1 を呼び出す
 call backf1(x,n,p,y,w,q,which,spar,dof,match,nef,
             etal,s,eta,beta,var,ifvar,tol,nit,maxit,
             qr,qraux,qrank,qpivot,effect,work(q+1),work(q+n+1),
@@ -142,6 +69,8 @@ end
 ```
 
 ##### backf1
+ここまで eta は y をリンク関数で変換したものとして扱われてきたが、backf1 の中では 平滑化対象変数によって構成される部分として扱われていて混乱しやすいので注意。
+
 
 ```{fortran}
 #### backf1
