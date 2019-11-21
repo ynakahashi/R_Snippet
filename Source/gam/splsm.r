@@ -105,10 +105,14 @@ integer ifcov
 double precision xin(nef+1),yin(nef+1),win(nef+1),knot(nef+6)
 integer nk,ldnk,ld4,k
 double precision xmin,xrange
+### suff
+### これは何かわからない
 call suff(n,nef,match,x,y,w,xin,yin,win,work(1))
 xmin=xin(1)
 xrange=xin(nef)-xin(1)
 do i=1,nef {xin(i)=(xin(i)-xmin)/xrange}
+### sknotl
+### ノットを決める？
 call sknotl(xin,nef,knot,k)
 nk=k-4
 ld4=4
@@ -191,6 +195,8 @@ yssw=wmean(nef,sout,win)
 s0=wmean(n,y,w)
 # which should be equal to wmean(nef,yin,win)
 yssw=yssw*(sumwin-s0*s0)
+
+### sbart
 
 call sbart(penalt,dofoff,xin,yin,win,yssw,nef,knot,nk,
 		  coef,sout,levout,crit,
