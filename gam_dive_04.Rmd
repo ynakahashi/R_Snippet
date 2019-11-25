@@ -35,7 +35,7 @@ output: html_document
 
 ここで括弧の中に着目すると、$b$から$ax$が順次引かれている（二項目と三項目）のですが、総和記号のインデックスには$i$が含まれていません。つまり更新の対象である$i$番目の$x$**以外**を順番に引いており、バックフィッティングと同じような計算になっていることがわかります。なお括弧の中の三項目は添え字が `(k)` ですが、二項目では `(k+1)` になっており、更新後の$x$を直接使っていることがわかります。さらにちなみに、ここで逐次更新するのではなく一度全ての解を求めてから一斉に更新する方法をヤコビ法といいます。
 
-では上記のアルゴリズムが `bakfit` ではどのように実装されているのかを確認してみましょう。と言いつつ実は `bakfit` 自体は基本的に以下のように `backf1` を呼び出しているだけです。
+では上記のアルゴリズムが `bakfit` でどのように実装されているのかを確認してみましょう。と言いつつ実は `bakfit` 自体は基本的に以下のように `backf1` を呼び出しているだけです。
 
 ```{fortran}
 subroutine bakfit(x,npetc,y,w,which,spar,dof,match,nef,
@@ -56,6 +56,7 @@ if(npetc(4)==1)ifvar=.true.
 maxit=npetc(6)
 qrank=npetc(7)
 do i=1,q{work(i)=dof(i)}
+### ここで backf1 を呼び出している
 call backf1(x,n,p,y,w,q,which,spar,dof,match,nef,
             etal,s,eta,beta,var,ifvar,tol,nit,maxit,
             qr,qraux,qrank,qpivot,effect,work(q+1),work(q+n+1),
@@ -209,7 +210,7 @@ return
 end
 ```
 
-３つ目の工程で `eta` の再定義とあるのですが、これまでの処理では `eta` は「 `y` をリンク関数で変換したもの」として扱われてきたものの、 `backf1` の中では 「平滑化対象変数によって構成される部分」として扱われており、混乱しやすいので注意が必要です。つまり `backf1` の中では `y` を「線形部分」と「非線形（平滑化）部分」に分割し、前者を `etal` 、後者を `eta` として計算が行われます。
+３つ目の工程で `eta` の再定義とあるのですが、これまでの処理（〜 `s.wam`）において `eta` は「 `y` をリンク関数で変換したもの」として扱われてきました。一方 `backf1` の中では 「平滑化対象変数によって構成される部分」（非線形/平滑化部分）として扱われており、混乱しやすいので注意が必要です。つまり `backf1` の中では `y` を「線形部分」と「非線形（平滑化）部分」に分割し、前者を `etal` 、後者を `eta` として計算が行われます。
 
 では一つずつ見ていきましょう。
 
@@ -220,7 +221,7 @@ end
 - QR分解する
 - `eta` （非線形部分）を定義する
 
-という工程が行われます。
+という処理が行われます。
 
 ```{fortran}
 ### weight の平方根をとって逆数にする
@@ -247,7 +248,7 @@ if(qrank==0){
 		}
 	do j=1,p{qpivot(j)=j} ### qvivot は長さ p の integer。1~p の数字を格納
 
-	### QR分解
+	### QR分解。dqrdca のソースは以下
 	### https://github.com/cran/gam/blob/master/inst/ratfor/linear.r
 	call dqrdca(qr,n,n,p,qraux,qpivot,work,qrank,onedm7)
 	}
@@ -263,16 +264,164 @@ do i=1,n{
 	}
 ```
 
+上のブロックでQR分解を行なっていますが、これは次の工程で線形部分に対して通常の回帰を実行するためです。以前の記事で `glm` がどのように実装されているかを調べた際、 `glm` では、
+
+- `dqrdc2` というサブルーチンを用いてQR分解
+- `dqrsl` というサブルーチンで最小二乗法を当てはめ
+
+という処理で解が得られることを示しましたが、 `glm` 同様に `gam` においても線形部分のフィッティングではQR分解によって最小二乗解を求める、という流れになっているようです。
+
+GLMをもう少し理解したい①
 
 
 ###### 2. バックフィッティング
+では続いてバックフィッティングの実装を見ていきましょう。ここが、ある意味で `gam` の本体とも言えるルーチンになります。
+
+
+```{fortran}
+### while ループ開始
+nit=0
+while ((ratio > tol )&(nit < maxit)){ # ratio のデフォルトは 1.0 。 tol は多分 0.0005
+	# first the linear fit
+	deltaf=0d0
+	nit=nit+1 # イテレータに +1
+
+	### まずは Linear part + error 部分に最小二乗法を当てはめる
+	### y から非線形項を減じたもの（Linear part + error）に重みを乗じて z を更新(これを y として dqrsl に渡す)
+	# etal を old に格納。ループ１回目の時点では etal は Null？
+	do i=1,n{
+		z(i)=(y(i)-eta(i))*sqwt(i) 
+		old(i)=etal(i)
+	}
+
+	### https://github.com/wch/r-source/blob/trunk/src/appl/dqrsl.f
+	### dqrsl の6個目の引数として z を渡しているが、これは y になる
+	### etal は11番目の引数として渡しているが、これは xb 。
+	call dqrsl(qr,n,n,qrank,qraux,z,work(1),effect(1),beta,
+		work(1),etal,job,info)
+
+	### 重みの逆数で戻し、 etal を更新
+	### etal は y の予測値の線形部分
+	do i=1,n{
+		etal(i)=etal(i)*sqwti(i)
+		}
+```
+
+まずは上のブロックで線形部分のフィッティングが行われます。 `dqrsl` の直前の処理に注目すると、 `y` から `eta` を減じたものを `z` として定義し、これを `dqrsl` の引数として渡しています。すなわち目的変数から `eta` （非線形部分）を減じた、線形部分ですね。これを、先ほど解説したように `dqrsl` というサブルーチンに渡し、最小二乗法による解を得ます。引数には `eta` ***ではなく*** `etal` が入っていることに注意しましょう。この `etal` は直後の処理で重みを乗じた上で後続の処理に引き渡されます。
+
+続いて平滑化対象変数の処理に入ります。
+
+```{fortran}
+	### ここで平滑化対象の変数についてループ
+	for(k=1;k<=q;k=k+1){ # 平滑化対象の変数ごとに
+		j=which(k)
+		do i=1,n{
+			### old に k 番目の平滑化対象変数の値を入れる
+			old(i)=s(i,k)
+			### y から etal (Linear part)と eta (Nonlinear part) を引き、old (k 番目の Nonlinear part) を足している
+			### 残差 + k 番目の平滑化変数の値になっている
+			z(i)=y(i)-etal(i)-eta(i)+old(i)
+		}
+                ### df は 0 にリセットされてしまう
+                if(nit>1){dof(k)=0d0}
+		
+		### splsm を呼びだす
+		### 切片と k 番目の平滑化変数を x として渡す
+		### 9番目の引数 s が splsm 内での平滑化変数 smo なので s が更新される
+		call splsm(x(1,j),z,w,n,match(1,k),nef(k),spar(k),
+			dof(k),s(1,k),s0,var(1,k),ifvar,work)
+		
+		do i=1,n{
+			### eta を更新
+			### 古い eta にk番目の非線形部分を加算して、古い非線形部分を減じる)
+			eta(i)=eta(i)+s(i,k)-old(i)
+			### etal を更新(古い etal に s0 を乗じる。)
+			### s0 は weighted mean of y
+			etal(i)=etal(i)+s0
+			}
+		### deltaf を更新（while ループの打ち切り判定）
+		deltaf=deltaf+dwrss(n,old,s(1,k),w)
+		} # ここまで for ループ
+```
+
+細かな処理はコメントとして書いてありますが、このブロックでは平滑化の対象となる変数について、平滑化を実行して `s` を更新します。ポイントは
+
+```{fortran}
+z(i)=y(i)-etal(i)-eta(i)+old(i)]
+```
+
+のところで、この記事の冒頭でバックフィッティングのアルゴリズムを解説した際に「関心のある平滑化対象変数を順番に残差に対してフィッティングしていく」と述べましたが、そのために残差を求めているのが上の式になります。 `etal` は線形部分、 `eta` は非線形部分なので両者を引くと確率的な誤差しか残りませんが、そこに `old(i)` つまり `s(i, k)` を加算することで、k番目の平滑化対象変数 + 確率的な誤差のみが残ります。
+
+続いてこの誤差に対して平滑化を行なっているのが
+
+```{fortran}
+splsm(x(1,j),z,w,n,match(1,k),nef(k),spar(k),
+			dof(k),s(1,k),s0,var(1,k),ifvar,work)
+```
+
+の部分です。この `splsm` は内部でさらに `sbart` というCのサブルーチンを呼び出しているのですが、この解説を始めるとキリがないのでまた別の機会に取っておきましょう。
+
+平滑化により `s` が更新されたら、 `eta` にもk番目の平滑化対象変数の更新を反映させます。
+
+最後に `while` ループの打ち切り判定のための指標を計算します。
+
+
+```{fortran}
+	### normf の更新（while ループの打ち切り判定）
+	normf=0d0
+	do i=1,n{
+		normf=normf+w(i)*eta(i)*eta(i)
+		}
+	### ratio（while ループの判定に使われる）を計算
+	if(normf>0d0){
+		ratio=dsqrt(deltaf/normf)
+		}
+	 else {ratio = 0d0}
+#         call DBLEPR("ratio",-1,ratio,1)
+	}
+```
 
 
 ###### 3. `eta` の再定義
+以上の工程で十分に収束したと判断されたらバックフィッティングアルゴリズムは終了し、 `s.wam` に値を返す処理に入ります。冒頭で解説したように `backf1` 内では `eta` は非線形部分として扱われていたので、これを線形部分と加算して元の `eta` に戻します。なお `beta` は線形部分の各変数の回帰係数です。
 
 
------ 以下は必要になったら -----
+```{fortran}
+### etal を再定義
+do j=1,p {work(j)=beta(j)}
+do j=1,p {beta(qpivot(j))=work(j)}
+if(anyzwt){
+	do i=1,n {
+		if(w(i) <= 0d0){
+			etal(i)=0d0
+			do j=1,p{
+				etal(i)=etal(i)+beta(j)*x(i,j)
+				}
+			}
+		}
+	}
 
+### 非線形項 + 線形項として eta を再定義
+do i=1,n
+	eta(i)=eta(i)+etal(i)
+
+### 結果をまとめる	
+do j=1,q {
+	call unpck(n,nef(j),match(1,j),var(1,j),old)
+	do i=1,n {var(i,j)=old(i)}
+	}
+
+return
+end
+```
+
+
+さて、これで `backf1` および `bakfit` の処理は終了したので `s.wam` に戻ることになります。 `s.wam` の残りの工程では、前回記事で確認したように結果を格納したオブジェクトである `rl` を生成するのでした。それと元々のデータを順位で置き換える形で生成された `smooth.frame` をまとめて返します。
+
+さらに `s.wam` を抜けると `gam.fit` 内でのループに戻ってくるわけですが、これは前々回記事で解説した通り、残差からデビアンスを計算した上でループの打ち切りを判定します。
+
+#### gam.fit
+収束が十分であれば、 `gam.fit` のループを抜けます。残りの工程は基本的に結果をまとめあげて `gam` に返すだけのようです。
 
 
 ```{r}
@@ -321,333 +470,45 @@ fit
 }
 ```
 
-#### 
-
-
-
-
-#### gam()の残り
+#### gam
+`gam` に帰ってきました。 `gam.fit` を呼び出した以降の処理は以下のブロックだけです。特定の条件下においてNull Deviance（切片のみ考慮されたモデルによる逸脱度）を計算し、結果をまとめあげて返します。
 
 ```{r}
-    ### offset が指定されており intercept 項がある場合
-    if (length(offset) && attr(mt, "intercept") > 0) {
-        fit$null.dev <- glm.fit(x = X[, "(Intercept)", drop = FALSE], 
-            y = Y, weights = weights, offset = offset, family = family, 
-            control = control[c("epsilon", "maxit", "trace")], 
-            intercept = TRUE)$deviance
-    }
-    if (model) 
-        fit$model <- mf
-    fit$na.action <- attr(mf, "na.action")
-    if (x) 
-        fit$x <- X
-    if (!y) 
-        fit$y <- NULL
-    fit <- c(fit, list(call = call, formula = formula, terms = mt, 
-        data = data, offset = offset, control = control, method = method, 
-        contrasts = attr(X, "contrasts"), xlevels = .getXlevels(mt, 
-            mf)))
-    class(fit) <- c("Gam", "glm", "lm")
-    if (!is.null(fit$df.residual) && !(fit$df.residual > 0)) 
-        warning("Residual degrees of freedom are negative or zero.  This occurs when the sum of the parametric and nonparametric degrees of freedom exceeds the number of observations.  The model is probably too complex for the amount of data available.")
-    fit
+### offset が指定されており intercept 項がある場合
+if (length(offset) && attr(mt, "intercept") > 0) {
+    fit$null.dev <- glm.fit(x = X[, "(Intercept)", drop = FALSE], 
+        y = Y, weights = weights, offset = offset, family = family, 
+        control = control[c("epsilon", "maxit", "trace")], 
+        intercept = TRUE)$deviance
+}
+if (model) 
+    fit$model <- mf
+fit$na.action <- attr(mf, "na.action")
+if (x) 
+    fit$x <- X
+if (!y) 
+    fit$y <- NULL
+fit <- c(fit, list(call = call, formula = formula, terms = mt, 
+    data = data, offset = offset, control = control, method = method, 
+    contrasts = attr(X, "contrasts"), xlevels = .getXlevels(mt, 
+        mf)))
+class(fit) <- c("Gam", "glm", "lm")
+if (!is.null(fit$df.residual) && !(fit$df.residual > 0)) 
+    warning("Residual degrees of freedom are negative or zero.  This occurs when the sum of the parametric and nonparametric degrees of freedom exceeds the number of observations.  The model is probably too complex for the amount of data available.")
+fit
 }
 ```
 
 
+### 終わりに
+以上で終わりです！ようやく `gam` の内部で何が行われているかを確認することができました。 `gam` という関数のコアとなる部分では：
 
+1. バックフィッティングによる非線形項のフィッティング（ `bakfit` および `backf1` ）
+2. バックフィッティングに渡すためにデータを順位に置き換える（ `s.wam` ）
+3. `{general, s, lo}.wam` のいずれのエンジンに渡すかを特定し、 `bf.call` を作成（ `gam.fit` ）
+4. `gam.fit` に渡すための諸々の設定（ `gam` ）
 
+といった処理が行われているようです。またバックフィッティングというアルゴリズムは、端的には「関心のある変数による影響のみを残してフィッティングすることを繰り返す」というものであることがわかりました。
 
+一方で、今回の一連の記事では平滑化の仕組みを追いかけることがまだ出来ていません。また平滑化の関数にしても `s.wam` しか見ておらず、 `lo.wam` や `general.wam` の挙動を確認していません。その辺りもいずれ調べたいですね。
 
-
-
-
-```{r}
-# fit <- lm(wage ~ poly(age, 4), data = Wage)
-# coef(summary(fit))
-# tmp <- head(cbind(Wage$age, poly(Wage$age, 4)))
-# tmp
-# fit2 <- lm(wage ~ poly(age, 4, raw = T), data = Wage)
-# coef(summary(fit2))
-# tmp2 <- head(cbind(Wage$age, poly(Wage$age, 4, raw = T)))
-# tmp2
-# tmp2[, 2]^2
-# tmp2[, 2]^3
-# tmp2[, 2]^4
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-agelims <- range(Wage$age)
-age.grid <- seq(from = agelims[1], to = agelims[2])
-preds <- predict(fit, newdata = list(age = age.grid), se = TRUE)
-se.bands <- cbind(preds$fit + 2 * preds$se.fit, preds$fit - 2 * preds$se.fit)
-par(mfrow = c(1, 1), mar = c(4.5, 4.5, 1, 1), oma = c(0, 0, 4, 0))
-plot(Wage$age, Wage$wage, xlim = agelims, cex = .5, col = "darkgrey")
-title("Quad Polynomial", outer = T)
-lines(age.grid, preds$fit, lwd = 2, col = "blue")
-matlines(age.grid, se.bands, lwd = 1, col = "blue", lty = 3)
-```
-
-
-
-
-```{r}
-library(splines)
-```
-
-
-
-```{r}
-plot(Wage$age, ns(Wage$age))
-```
-
-
-```{r}
-par(mfrow = c(2, 2), cex = .5)
-plot(ns(Wage$age, df = 4)[, 1], Wage$wage)
-plot(ns(Wage$age, df = 4)[, 2], Wage$wage)
-plot(ns(Wage$age, df = 4)[, 3], Wage$wage)
-plot(ns(Wage$age, df = 4)[, 4], Wage$wage)
-```
-
-
-
-```{r}
-plot(Wage$age, Wage$wage, xlim = agelims, cex = .5, col = "darkgrey")
-title("Smooth spline")
-fit <- smooth.spline(Wage$age, Wage$wage, df = 16)
-fit2 <- smooth.spline(Wage$age, Wage$wage, cv = TRUE)
-fit2$df
-lines(fit, col = "red", lwd = 2)
-lines(fit2, col = "blue", lwd = 2)
-legend("topright", legend = c("16 DF", "6.8 DF"),
-       col = c("red", "blue"), lty = 1, lwd = 2, cex = .8)
-```
-
-```{r}
-plot(Wage$age, Wage$wage, xlim = agelims, cex = .5, col = "darkgrey")
-title("Loess")
-fit = loess(wage ~ age, span = .2, data = Wage)
-fit2 = loess(wage ~ age, span = .5, data = Wage)
-lines(age.grid, predict(fit, data.frame(age = age.grid)),
-      col = "red", lwd = 2)
-lines(age.grid, predict(fit2, data.frame(age = age.grid)),
-      col = "blue", lwd = 2)
-legend("topright", legend = c("Span = 0.2", "Span = 0.5"),
-       col = c("red", "blue"), lty = 1, lwd = 2, cex = .8)
-```
-
-
-
-```{r}
-gam1 <- lm(wage ~ ns(year, 4) + ns(age, 5) + education, data = Wage)
-coef(summary(gam1))
-```
-
-```{r}
-plot(gam1)
-```
-
-```{r}
-library(gam)
-```
-
-```{r}
-gam.m3 <- gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
-```
-
-```{r}
-par(mfrow = c(1, 3))
-plot(gam.m3, se = TRUE, col = "blue")
-```
-
-`gam1` は `lm` で当てはめているが `plot.Gam` が利用できる
-
-```{r}
-par(mfrow = c(1, 3))
-plot.Gam(gam1, se = TRUE, col = "red")
-```
-
-
-平滑化スプラインを使う場合は `lm` ではなく `gam` を使わないとまともに計算できない
-
-```{r}
-gam.m4 <- lm(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
-```
-```{r}
-par(mfrow = c(1, 3))
-plot.Gam(gam.m4, se = TRUE, col = "red")
-```
-
-
-```{r}
-gam.lo <- gam(wage ~ s(year, 4) + lo(age, span = 0.7) + education,
-              data = Wage)
-```
-
-```{r}
-par(mfrow = c(1, 3))
-plot.Gam(gam.lo, se = TRUE, col = "blue")
-```
-
-
-```{r}
-gam.lo.i <- gam(wage ~ lo(year, age, span = 0.5) + education,
-                data = Wage)
-```
-
-```{r}
-# install.packages("akima")
-library(akima)
-```
-
-```{r}
-plot(gam.lo.i)
-```
-
-
-```{r}
-gam.lr <- gam(I(wage > 250) ~ year + s(age, 5) + education,
-              family = "binomial", data = Wage)
-```
-
-```{r}
-par(mfrow = c(1, 3))
-plot(gam.lr, se = TRUE, col = "blue")
-```
-
-```{r}
-gam.lr.s <- gam(I(wage > 250) ~ year + s(age, 5) + education,
-                family = "binomial", data = Wage, 
-                subset = (education != "1. < HS Grad"))
-par(mfrow = c(1, 3))
-plot(gam.lr.s, se = TRUE, col = "blue")
-```
-
-
-モデルオブジェクトが `smooth` を持つか
-```{r}
-is.null(gam.m4$smooth)
-```
-
-```{r}
-is.null(gam.m3$smooth)
-```
-
-
-新規データに対してはSEは出せない
-
-```{r}
-nd <- head(Wage, 5)
-predict(gam.m3, nd, se.fit = TRUE)
-```
-
-
-
-まずは `predict.glm` で予測値を求める。当然答えは異なる。
-
-```{r}
-predict.glm(gam.m3, nd)
-predict.Gam(gam.m3, nd)
-```
-
-
-使用している変数で model.frame を作成する
-
-```{r}
-Terms <- delete.response(gam.m3$terms)
-model.frame(Terms, nd)
-```
-
-
-```{r}
-!is.null(cl <- attr(Terms, "dataClasses"))
-```
-
-```{r}
-smooth.frame <- model.frame(Terms, nd, na.action = na.fail, 
-                            xlev = gam.m3$xlevels)
-.checkMFClasses(cl, smooth.frame)
-```
-
-
-モデルオブジェクトから平滑化された説明変数の列名を取ってくる。
-上で作った `smooth.frame` ではなく、モデルオブジェクトに格納された
-`smooth.frame` なので注意。
-
-```{r}
-nrows <- nrow(nd)
-smooth.labels <- names(gam.m3$smooth.frame)
-n.smooths <- length(smooth.labels)
-pred.s <- array(0, c(nrows, n.smooths), list(row.names(smooth.frame), 
-            smooth.labels))
-pred.s
-```
-
-
-
-```{r}
-terms <- labels(gam.m3)
-smooth.labels[match(smooth.labels, terms, 0) > 0]
-```
-
-モデルオブジェクトの `smooth.frame` において該当する列の "call" アトリビューションを取り出す
-```{r}
-TT <- "s(year, 4)"
-Call <- attr(gam.m3$smooth.frame[[TT]], "call")
-Call
-```
-
-上記にオプションを追加する。 `Call` は `call` クラスであり、
-List における各要素にオプションを持つ感じ。
-
-```{r}
-Call$xeval <- substitute(smooth.frame[[TT]], list(TT = TT))
-Call
-```
-
-
-データの各点の重み w と、上で作った z を渡して `gam.s` を呼ぶ。
-`data` オブジェクトの代わりにモデルオブジェクトの `smooth.frame` を渡す。
-`spar` はスムージングパラメータ、 `df` は平滑化の自由度。 `df` が指定されている場合はこちらが使われる
-
-```{r}
-w <- gam.m3$weights
-z <- gam.m3$residuals + gam.m3$smooth[, TT]
-# pred.s[, TT] <- eval(Call)
-pred.s <- gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1, df = 4, xeval = smooth.frame[[TT]])
-```
-
-
-`df` を指定した状態で `spar` を変えても予測値は変わらないはず。
-
-```{r}
-gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 0.8, df = 4, xeval = smooth.frame[[TT]])
-gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1.2, df = 4, xeval = smooth.frame[[TT]])
-```
-
-`df` を0にすると `spar` が使われる
-
-```{r}
-gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 0.8, df = 0, xeval = smooth.frame[[TT]])
-gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1.2, df = 0, xeval = smooth.frame[[TT]])
-```
-
-`df` を1以上で変化させると予測値が変わる
-
-```{r}
-gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1, df = 2, xeval = smooth.frame[[TT]])
-gam.s(gam.m3$smooth.frame[[TT]], z, w, spar = 1, df = 4, xeval = smooth.frame[[TT]])
-```
