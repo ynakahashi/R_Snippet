@@ -138,13 +138,42 @@ m <- solve(diag(n) + lambda * A) %*% y
 
 
 ```{r}
-for (i in seq(0, 1, 0.1)){
+plot(x, y, ylim = c(-1.2, 1.2), type = "l", col = 1)
+par(new = T)
+cnt <- 0
+for (i in seq(0, 1, 0.05)){
+  cnt <- cnt + 1
   lambda <- i
   m <- solve(diag(n) + i * A) %*% y
-  plot(x, m, ylim = c(-0.5, 1.2), type = "l", col = i*10)
-  par(new = T)
+  if(cnt == 1) {
+    plot(x, m, ylim = c(-1.2, 1.2), type = "l", col = i*10, ylab = "")
+    par(new = T)
+  } else {
+    plot(x, m, ylim = c(-1.2, 1.2), type = "l", col = i*10, axes = F, xlab = "",
+         ylab = "")
+    par(new = T)
+  }
 }
 
+```
+
+
+```{r}
+plot(x, y, ylim = c(-1.2, 1.2), type = "l", col = 1)
+par(new = T)
+cnt <- 0
+for (i in seq(1.2, 3, 0.1)) {
+  cnt <- cnt + 1
+  tmp_ss <- smooth.spline(x, y, df = i)
+  if(cnt == 1) {
+    plot(tmp_ss$x, tmp_ss$y, ylim = c(-1.2, 1.2), type = "l", col = i)
+    par(new = T)
+  } else {
+    plot(tmp_ss$x, tmp_ss$y, ylim = c(-1.2, 1.2), type = "l", col = i, 
+         axes = F, xlab = "", ylab = "")
+    par(new = T)
+  }
+}
 ```
 
 
