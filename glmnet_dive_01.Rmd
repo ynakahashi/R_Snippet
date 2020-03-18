@@ -66,7 +66,7 @@ dev.off()
 ```{r}
 # calc_pnl <- function(beta, X, y, lambda, alpha) {
 #     yhat <- X %*% beta
-#     rss <- sqrt(sum((y-yhat)^2))
+#     rss <- sqrt(sum((y-yhat)^2)) / 2
 #     penal <- rss + lambda * ((1-alpha)/2 * sum(abs(beta)) + alpha * sum(beta^2))
 #     return(penal)
 # }
@@ -267,17 +267,29 @@ function (x, y, family = c("gaussian", "binomial", "poisson",
 それでは各ステップを細かく見ていきましょう。
 
 #### 1. パラメータの設定、前処理、エラーチェック
-まずはパラメータの設定や前処理に関わる部分ですが、はじめに `family` の指定が問題ないかをチェックします。 `glmnet` で
-使用可能な `family` は `glm` とは異なっており、`Gamma` や `inverse.gaussian`、`quasi-` が使えない代わりに `multinomial`、 `cox` 、`mgaussian` が使えるようになっています。ここで `multinomial` は多項分布、`mgaussian` は多変量正規分布を意味するようです。
+まずはパラメータの設定や前処理に関わる部分ですが、はじめに `family` の指定が問題ないかをチェックします。
+`glmnet` で使用可能な `family` は `glm` とは異なっており、`Gamma` / `inverse.gaussian` / `quasi-` が使えない代わりに、 `multinomial` / `cox` / `mgaussian` が使えるようになっています。
+ここで `multinomial` は多項分布、`mgaussian` は多変量正規分布を意味するようです。
 
-`family` のチェックには `match.arg` 関数が使われています。この関数の挙動を理解するのは少し難しいのですが、[こちらのブログ](https://hoxo-m.hatenablog.com/entry/20111025/p1)が参考になります。
+`family` のチェックには `match.arg` 関数が使われています。
+この関数の挙動を理解するのは少し難しいのですが、[こちらのブログ](https://hoxo-m.hatenablog.com/entry/20111025/p1)が参考になります。
 
 ```{r}
 ## 指定したfamilyが引数としてOKかチェック
 family = match.arg(family)
 ```
 
+続いて `alpha` のチェックに入ります。
+`glmnet` においてこの `alpha` は回帰係数のL1およびL2ノルムそれぞれに対する罰則の割合をコントロールします。
+より具体的には、 `glmnet` では罰則項は以下によって定義されます（https://cran.r-project.org/web/packages/glmnet/glmnet.pdf の P19より）：
 
+
+$$
+(1 − \alpha)/2||\beta||^{2}_{2} + \alpha||\beta||_{1}
+$$
+
+冒頭のコードでは `alpha = 1` または `alpha = 0` としましたが、上の式から `alpha = 1` のときにL2ノルムに対する罰則が消えてL1ノルムのみが残り（Lasso）、逆に `alpha = 0` とするとL1ノルムに対する罰則が消えてL2ノルムが残る（Ridge）ことがわかります。
+また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます。
 
 ```{r}
 ## alpha
@@ -513,6 +525,8 @@ kopt = as.integer(kopt)
 
 #### 2. フィッティング
 
+
+https://tutel.me/c/programming/questions/33533045/how+can+i+see+the+source+code+of+fortran+in+r
 
 #### 3. 後処理
 
