@@ -30,7 +30,10 @@ function (x, is.sparse, ix, jx, y, weights, offset, type.gaussian = c("covarianc
     else .Fortran("elnet", ka, parm = alpha, nobs, nvars, as.double(x), 
         y, weights, jd, vp, cl, ne, nx, nlam, flmin, ulam, thresh, 
         isd, intr, maxit, lmu = integer(1), a0 = double(nlam), 
-        ca = double(nx * nlam), ia = integer(nx), nin = integer(nlam), 
+        # nx は 非ゼロの変数の個数
+        # nlam は検証する lambda の個数
+        # なので ca は変数の数 * lambda の数
+        ca = double(nx * nlam), ia = integer(nx), nin = integer(nlam),  
         rsq = double(nlam), alm = double(nlam), nlp = integer(1), 
         jerr = integer(1), PACKAGE = "glmnet")
     if (fit$jerr != 0) {

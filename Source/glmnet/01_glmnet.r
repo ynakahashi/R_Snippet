@@ -84,7 +84,8 @@ function (x, y, family = c("gaussian", "binomial", "poisson",
     ### dfmax = nvars + 1
     ne = as.integer(dfmax)
 
-    ### 非ゼロとする変数の数の上限
+    ### 非ゼロとする変数の数の上限？
+    ### Limit the maximum number of variables ever to be nonzero
     ### pmax = min(dfmax * 2 + 20, nvars)
     nx = as.integer(pmax)
 
@@ -277,6 +278,8 @@ function (x, y, family = c("gaussian", "binomial", "poisson",
         utils::setTxtProgressBar(pb, nlam)
         close(pb)
     }
+    
+    # 後処理
     ## lambda が指定されておらず fit$lambda が 3 パターン以上検証されている場合、先頭を差し替える
     ## glmnet::fix.lam
     ## function (lam) {
