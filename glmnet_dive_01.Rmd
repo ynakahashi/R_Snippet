@@ -365,25 +365,31 @@ match.call(myfun, call("myfun", 1, def = 3, ghi = 5))
 this.call = match.call()
 ```
 
-
-
+さらに続いて、 `nlambda` の指定です。
+ここでは $\lambda$ （罰則の大きさ）そのものではなく、検証する $\lambda$ の数（nubmer of lambda）を指定します（デフォルトは100）。
 
 ```{r}
 ## nlambda
-### number of lambda
-### 検証する lambda の数を指定する。デフォルトは 100
 nlam = as.integer(nlambda)
+```
 
-## drop は length が 1 である冗長な次元を落とす
+ここからは `y` 、 `x` および `weight` のチェックです。
+まず `y` に対する `drop` ですが、これは length が 1 であるような冗長な次元を落とす関数です。
+続いて `x` の行数が `weight` や `y` と合わない場合にエラーを返しています。
+
+
+```{r}
+## drop
 y = drop(y)
 
 ## x
-### x は２列以上持つ必要があるので、単回帰はできない
+### x は２列以上持つ必要があるので、単回帰はできない様子
 np = dim(x)
 if (is.null(np) | (np[2] <= 1)) 
     stop("x should be a matrix with 2 or more columns")
 ### x のレコード数
 nobs = as.integer(np[1])
+
 ### weights
 ### 未入力のときは 1 を与え、weights と nobs が一致しないときはエラー
 if (missing(weights)) 
@@ -392,6 +398,7 @@ else if (length(weights) != nobs)
     stop(paste("number of elements in weights (", length(weights), 
         ") not equal to the number of rows of x (", nobs, 
         ")", sep = ""))
+
 ### 変数の数
 nvars = as.integer(np[2])
 
@@ -403,7 +410,11 @@ nrowy = ifelse(is.null(dimy), length(y), dimy[1])
 if (nrowy != nobs) 
     stop(paste("number of observations in y (", nrowy, ") not equal to the number of rows of x (", 
         nobs, ")", sep = ""))
+```
 
+
+
+```{r}
 ## 変数名
 vnames = colnames(x)
 if (is.null(vnames)) 
@@ -421,7 +432,9 @@ nx = as.integer(pmax)
 ### 除外対象となる変数の指定
 if (missing(exclude)) 
     exclude = integer(0)
+```
 
+```{r}
 ## 変数ごとに異なるペナルティを与える
 ### デフォルトは 1 が入る
 ### Inf が指定されている変数は exclude として扱われる
@@ -439,7 +452,9 @@ if (length(exclude) > 0) {
 }
 else jd = as.integer(0)
 vp = as.double(penalty.factor)
+```
 
+```{r}
 ## 内部でデフォルトで持っているパラメータ 
 internal.parms = glmnet.control()
 ### プログレスバーを表示する！
@@ -451,7 +466,9 @@ else {
         on.exit(glmnet.control(itrace = 0))
     }
 }
+```
 
+```{r}
 ## 上限・下限
 ### lower.limit としては非正の値のみ指定できる
 if (any(lower.limits > 0)) {
@@ -493,7 +510,9 @@ if (any(cl == 0)) {
     }
 }
 storage.mode(cl) = "double"
+```
 
+```{r}
 ## 標準化
 ### standardize と intercept はデフォルトは TRUE なので 1 になる
 isd = as.integer(standardize)
@@ -503,11 +522,15 @@ if (!missing(intercept) && family == "cox")
     warning("Cox model has no intercept")
 ### standardize.response は family="mgaussian" のときに目的変数を標準化するかの指定
 jsd = as.integer(standardize.response)
+```
 
+```{r}
 ## 収束判定
 ### coordinate descent における収束の閾値
 thresh = as.double(thresh)
+```
 
+```{r}
 ## lambda
 ### ペナルティの大きさ
 ### 指定がない場合、flmin(下限？)とulam(上限？)は lambda.min.ratio および 1 に指定される
@@ -526,7 +549,9 @@ else {
     ulam = as.double(rev(sort(lambda)))
     nlam = as.integer(length(lambda))
 }
+```
 
+```{r}
 ## sparse matrix 
 ### x が Matrix::sparseMatrix の場合は Matrix::dgCMatrix に変換する
 ### 違いはわからない
@@ -547,14 +572,19 @@ if (inherits(x, "sparseMatrix")) {
     ### x@x は非ゼロである値そのもののベクトル
     x = as.double(x@x)
 }
+```
 
+```{r}
 ## プログレスバー
 if (trace.it) {
     if (relax) 
         cat("Training Fit\n")
     pb <- createPB(min = 0, max = nlam, initial = 0, style = 3)
 }
+```
 
+
+```{r}
 ## 最適化の手法（ロジスティックおよび多項ロジスティックの時）
 ### type.logistic = c("Newton", "modified.Newton")
 ### Newton を指定なら 0、modified.Newton を指定なら 1 を返す
@@ -570,7 +600,6 @@ if (family == "multinomial") {
         kopt = 2
 }
 kopt = as.integer(kopt)
-
 ```
 
 
