@@ -313,20 +313,62 @@ if (alpha < 0) {
 alpha = as.double(alpha)
 ```
 
+続いて `match.call()` を用いて引数の指定を正式なものに直します。
+これだけだと何を言っているかちょっとわからないと思いますので、以下の例で確認してみましょう：
+
+```{r}
+myfun <- function(abc, def, ghi) { 
+    return(abc + 2*def + 3*ghi)
+}
+```
+
+上のように引数として `abc` 、 `def` 、 `ghi` を取る関数を定義します。
+このとき R では、引数の指定がない場合には順番通りに入力されます：
+
+
+```{r}
+myfun(1, 2, 3)
+```
+
+一部の引数のみ指定がある場合では指定された引数だけがその通りに入力され、残りは順番通りに割り当てられるようです。
+
+```{r}
+myfun(def = 3, 4, 5)
+```
+
+ところでこの引数の指定は、一意に決まれば指定は省略することができます：
+
+```{r}
+myfun(d = 3, 4, 5)
+```
+
+例えば以下のような呼び出しでは `g` から始まる引数が２つあるため一意に決まらず、エラーとなってしまいます。
+
+```{r}
+myfun2 <- function(abc, def, ghi, gjk) {
+    return(abc + 2*def + 3*ghi + 4*gjk)
+}
+myfun2(g = 3, 4, 5, 6)
+```
+
+では `match.call` を使って関数を呼び出すとどうなるかと言うと：
+
+```{r}
+match.call(myfun, call("myfun", 1, def = 3, ghi = 5))
+```
+
+この通り、各引数に対して何を割り当てたかを得ることができます。
+便利ですね。
+
+```{r}
+## match.call
+this.call = match.call()
+```
 
 
 
 
 ```{r}
-## match.call
-### 引数を順番通り、正式な名前に直してくれる
-### match.call returns a call in which all of the specified arguments are specified by their full names.
-### https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/match.call
-### myfun <- function(x = 100, pos = 3, dim = 100) { return(x + pos + dim) }
-### myfun(1, 2, 3)
-### match.call(myfun, call("myfun", 1, d = 3, p = 5))
-this.call = match.call()
-
 ## nlambda
 ### number of lambda
 ### 検証する lambda の数を指定する。デフォルトは 100
