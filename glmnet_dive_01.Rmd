@@ -289,15 +289,19 @@ $$
 $$
 
 冒頭のコードでは `alpha = 1` または `alpha = 0` としましたが、上の式から `alpha = 1` のときにL2ノルムに対する罰則が消えてL1ノルムのみが残り（Lasso）、逆に `alpha = 0` とするとL1ノルムに対する罰則が消えてL2ノルムが残る（Ridge）ことがわかります。
-また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます。
+また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます
+
+なお、ここでL2ノルムに対する罰則が1/2になっている理由はよくわかりませんでした。
+`glmnet` の help で引用されている[こちらの論文](https://web.stanford.edu/~hastie/Papers/glmnet.pdf)ではすでに $(1-\alpha)1/2||\beta||^2_2$ として定義されています。
+またscikit-learnでも同様にL2ノルムに対しては0.5を乗じているようです。
+https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
+
 
 ```{r}
 ## alpha
 ### LassoとRidgeそれぞれに対するペナルティの配分を決めるパラメータ
 ### glmnetにおける罰則項は以下で定義
-### (1 − α)/2||β||^2_2 + α||β||_1
 ### alphaは0~1で、1ならLasso、0ならRidgeに対応
-### なんで1/2なんだろ？？
 if (alpha > 1) {
     warning("alpha >1; set to 1")
     alpha = 1
@@ -307,7 +311,13 @@ if (alpha < 0) {
     alpha = 0
 }
 alpha = as.double(alpha)
+```
 
+
+
+
+
+```{r}
 ## match.call
 ### 引数を順番通り、正式な名前に直してくれる
 ### match.call returns a call in which all of the specified arguments are specified by their full names.
