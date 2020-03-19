@@ -48,30 +48,29 @@ dev.off()
 なお Lasso では回帰係数が0に収束している一方、 Ridge では微小ながら最後まで係数が0とならずに残っていることがわかりますが（グラフ上部の Degrees of Freedom が 4 のままとなっています）、 Lasso のように一部の回帰係数を正確に 0 と推定することが可能な手法を**スパース推定**と呼びます。
 
 
-
 ```{r}
-# X <- as.matrix(cbind(1, x))
-# colnames(X)[1] <- "Intercept"
-# beta <- rep(0.5, 5)
-# 
-# calc_rss <- function(beta, X, y) {
-# yhat <- X %*% beta
-# rss <- sqrt(sum((y-yhat)^2))
-# return(rss)
-# }
-# optim(optim(beta, calc_rss, X = X, y = y)$par, calc_rss, X = X, y = y)
+X <- as.matrix(cbind(1, x))
+colnames(X)[1] <- "Intercept"
+beta <- rep(0.5, 5)
+
+calc_rss <- function(beta, X, y) {
+yhat <- X %*% beta
+rss <- sqrt(sum((y-yhat)^2))
+return(rss)
+}
+optim(optim(beta, calc_rss, X = X, y = y)$par, calc_rss, X = X, y = y)
 ```
 
 
 ```{r}
-# calc_pnl <- function(beta, X, y, lambda, alpha) {
-#     yhat <- X %*% beta
-#     rss <- sqrt(sum((y-yhat)^2)) / 2
-#     penal <- rss + lambda * ((1-alpha)/2 * sum(abs(beta)) + alpha * sum(beta^2))
-#     return(penal)
-# }
-# optim(beta, calc_pnl, X = X, y = y, lambda = 0.5, alpha = 0)
-# coef(glmnet(x, y, family = "gaussian", alpha = 0, lambda = 0.5))
+calc_pnl <- function(beta, X, y, lambda, alpha) {
+    yhat <- X %*% beta
+    rss <- sum((y-yhat)^2) / 2 / nrow(X)
+    penal <- rss + lambda * (alpha * sum(abs(beta)) + (1-alpha)/2 * sum(beta^2))
+    return(penal)
+}
+optim(beta, calc_pnl, X = X, y = y, alpha = 0.7, lambda = 0.5)$par
+coef(glmnet(x, y, family = "gaussian", alpha = 0.7, lambda = 0.5))
 ```
 
 
@@ -377,7 +376,6 @@ nlam = as.integer(nlambda)
 まず `y` に対する `drop` ですが、これは length が 1 であるような冗長な次元を落とす関数です。
 続いて `x` の行数が `weight` や `y` と合わない場合にエラーを返しています。
 
-
 ```{r}
 ## drop
 y = drop(y)
@@ -435,7 +433,7 @@ if (missing(exclude))
     exclude = integer(0)
 ```
 
-ここでは変数ごとに異なるペナルティを与えるために `penalty.factor` を指定します。
+次に変数ごとに異なるペナルティを与えるために `penalty.factor` を指定します。
 この数値が `lambda` に乗じられるため、例えば特定の変数に対して `penalty.factor = 0` としておけば罰則を与えないようにすることが可能となります（結果として常にモデルに採用されるようになる）。
 
 せっかくなので実際にやってみましょう。
@@ -471,7 +469,6 @@ coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3,
 ## 変数ごとに異なるペナルティを与える
 ### デフォルトは 1 が入る
 ### Inf が指定されている変数は exclude として扱われる
-### Default is 1 for all variables (and implicitly infinity for variables listed in exclude)
 if (any(penalty.factor == Inf)) {
     exclude = c(exclude, seq(nvars)[penalty.factor == Inf])
     exclude = sort(unique(exclude))
@@ -487,6 +484,8 @@ else jd = as.integer(0)
 vp = as.double(penalty.factor)
 ```
 
+さらに `glmnet.control` で持っているパラメータを渡します。
+
 ```{r}
 ## 内部でデフォルトで持っているパラメータ 
 internal.parms = glmnet.control()
@@ -501,6 +500,9 @@ else {
 }
 ```
 
+次に、回帰係数に対する上限・下限を設定します。
+なお下限は non-positive 、上限は non-negative しか設定できないようですね。
+
 ```{r}
 ## 上限・下限
 ### lower.limit としては非正の値のみ指定できる
@@ -511,9 +513,10 @@ if (any(lower.limits > 0)) {
 if (any(upper.limits < 0)) {
     stop("Upper limits should be non-negative")
 }
-### Inf になっているものについてはデフォルトの値(9.9e35)に差し替え  
+### Inf （デフォルト）になっているものについては特定の値(9.9e35)に差し替え  
 lower.limits[lower.limits == -Inf] = -internal.parms$big
 upper.limits[upper.limits == Inf] = internal.parms$big
+
 ### nvars との整合性チェック
 if (length(lower.limits) < nvars) {
     ### lower.limits としてスカラが指定されている場合は nvars 全てに適用
@@ -530,20 +533,26 @@ if (length(upper.limits) < nvars) {
     else stop("Require length 1 or nvars upper.limits")
 }
 else upper.limits = upper.limits[seq(nvars)]
+### 上限・下限
+### coefficient limit？
 cl = rbind(lower.limits, upper.limits)
+
 ### lower または upper に 0 を含む場合
-### ここ何をやっているのかよくわからない
+### 0除算が発生するときのエラー対策？
 if (any(cl == 0)) {
     ### fdev は最小となるデビアンスの変化量(割合)
     ### minimum fractional change in deviance for stopping path; factory default = 1.0e5
     fdev = glmnet.control()$fdev
     if (fdev != 0) {
         glmnet.control(fdev = 0)
-        on.exit(glmnet.control(fdev = fdev))
+        on.exit(glmnet.control(fdev = fdev)) # 関数終了時に実行される処理
     }
 }
 storage.mode(cl) = "double"
 ```
+
+標準化と切片に対する指定です。
+標準化の処理そのものは以降の関数の内部で実行されるため、ここでは指定のみを行います。
 
 ```{r}
 ## 標準化
@@ -556,6 +565,7 @@ if (!missing(intercept) && family == "cox")
 ### standardize.response は family="mgaussian" のときに目的変数を標準化するかの指定
 jsd = as.integer(standardize.response)
 ```
+
 
 ```{r}
 ## 収束判定
