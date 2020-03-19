@@ -410,22 +410,23 @@ nrowy = ifelse(is.null(dimy), length(y), dimy[1])
 if (nrowy != nobs) 
     stop(paste("number of observations in y (", nrowy, ") not equal to the number of rows of x (", 
         nobs, ")", sep = ""))
-```
-
-
-
-```{r}
 ## 変数名
 vnames = colnames(x)
 if (is.null(vnames)) 
     vnames = paste("V", seq(nvars), sep = "")
+```
 
+以下ではモデルに含める変数や非ゼロとする変数などを指定します
+（ `nx(=pmax)` の方はちょっと理解がアヤシイので help の説明を書いておきます）。
+
+```{r}
 ## 自由度
 ### モデルに含まれる変数の上限を指定
 ### dfmax = nvars + 1
 ne = as.integer(dfmax)
 
 ### 非ゼロとする変数の数の上限
+### Limit the maximum number of variables ever to be nonzero
 ### pmax = min(dfmax * 2 + 20, nvars)
 nx = as.integer(pmax)
 
@@ -433,6 +434,38 @@ nx = as.integer(pmax)
 if (missing(exclude)) 
     exclude = integer(0)
 ```
+
+ここでは変数ごとに異なるペナルティを与えるために `penalty.factor` を指定します。
+この数値が `lambda` に乗じられるため、例えば特定の変数に対して `penalty.factor = 0` としておけば罰則を与えないようにすることが可能となります（結果として常にモデルに採用されるようになる）。
+
+せっかくなので実際にやってみましょう。
+冒頭のコードを持ってきて、以下のように `lambda` を適当に設定してみます。
+
+```{r}
+x <- scale(LifeCycleSavings[, 2:5])
+y <- LifeCycleSavings[, 1] - mean(LifeCycleSavings[, 1])
+
+coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3))
+```
+
+このとき、2・3番目の変数である `pop75` と `dpi` は 0 と推定されてしまいました。
+ここでこれらの変数の `penalty.factor` を 0 とすると
+
+```{r}
+coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3,
+            penalty.factor = c(1, 0, 0, 1)))
+```
+
+ちゃんと推定されるようになっています。
+逆に `pop15` の `penalty.factor` を大きくすると
+
+```{r}
+coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3,
+            penalty.factor = c(2, 0, 0, 1)))
+```
+
+このようにモデルから除外されることになります。
+さらに `penalty.factor = Inf` とすると、その変数は `exclude` として扱われるようになります。
 
 ```{r}
 ## 変数ごとに異なるペナルティを与える
