@@ -566,12 +566,17 @@ if (!missing(intercept) && family == "cox")
 jsd = as.integer(standardize.response)
 ```
 
+収束を判定する閾値を指定します。
 
 ```{r}
 ## 収束判定
 ### coordinate descent における収束の閾値
 thresh = as.double(thresh)
 ```
+
+
+
+
 
 ```{r}
 ## lambda
