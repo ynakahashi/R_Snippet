@@ -77,7 +77,8 @@ coef(glmnet(x, y, family = "gaussian", alpha = 0.7, lambda = 0.5))
 
 
 ### `glmnet` の実装
-それでは `glmnet` という関数がどのように実装されているのか見ていきましょう。まずはいつものように全体をさっと眺め、見通しをよくします。
+それでは `glmnet` という関数がどのように実装されているのか見ていきましょう。
+まずはいつものように全体をさっと眺め、見通しをよくします。
 
 ```{r}
 function (x, y, family = c("gaussian", "binomial", "poisson", 
@@ -290,13 +291,13 @@ $$
 $$
 
 冒頭のコードでは `alpha = 1` または `alpha = 0` としましたが、上の式から `alpha = 1` のときにL2ノルムに対する罰則が消えてL1ノルムのみが残り（Lasso）、逆に `alpha = 0` とするとL1ノルムに対する罰則が消えてL2ノルムが残る（Ridge）ことがわかります。
-また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます
+また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます。
 
 なお、ここでL2ノルムに対する罰則が1/2になっている理由はよくわかりませんでした。
 `glmnet` の help で引用されている[こちらの論文](https://web.stanford.edu/~hastie/Papers/glmnet.pdf)ではすでに $(1-\alpha)1/2||\beta||^2_2$ として定義されています。
 またscikit-learnでも同様にL2ノルムに対しては0.5を乗じているようです。
 https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
-
+誰か理由を教えてください。
 
 ```{r}
 ## alpha
@@ -343,7 +344,7 @@ myfun(def = 3, 4, 5)
 myfun(d = 3, 4, 5)
 ```
 
-例えば以下のような呼び出しでは `g` から始まる引数が２つあるため一意に決まらず、エラーとなってしまいます。
+一方、例えば以下のような呼び出しでは `g` から始まる引数が２つあるため一意に決まらず、エラーとなってしまいます。
 
 ```{r}
 myfun2 <- function(abc, def, ghi, gjk) {
@@ -425,7 +426,7 @@ if (is.null(vnames))
 ### dfmax = nvars + 1
 ne = as.integer(dfmax)
 
-### 非ゼロとする変数の数の上限
+### 非ゼロとする変数の数の上限(?)
 ### Limit the maximum number of variables ever to be nonzero
 ### pmax = min(dfmax * 2 + 20, nvars)
 nx = as.integer(pmax)
@@ -576,14 +577,14 @@ jsd = as.integer(standardize.response)
 thresh = as.double(thresh)
 ```
 
-
-
-
+次に、 `lambda` に関する指定となりますが、 `flmin` および `ulam` の使われ方がよく理解できなかったため、これらの説明は省略します。
+なお help にもありますが、通常は `lambda` には単一の値ではなく、候補となる値のベクトルを与えます。
+ > Avoid supplying a single value for lambda (for predictions after CV use predict() instead).
 
 ```{r}
 ## lambda
 ### ペナルティの大きさ
-### 指定がない場合、flmin(下限？)とulam(上限？)は lambda.min.ratio および 1 に指定される
+### 指定がない場合、flmin と ulam は lambda.min.ratio および 1 に指定される
 ### lambda.min.ratio = ifelse(nobs < nvars, 0.01, 1e-04)
 if (is.null(lambda)) {
     if (lambda.min.ratio >= 1) 
@@ -600,6 +601,9 @@ else {
     nlam = as.integer(length(lambda))
 }
 ```
+
+
+
 
 ```{r}
 ## sparse matrix 
