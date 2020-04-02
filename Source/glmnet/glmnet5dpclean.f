@@ -38,6 +38,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       itrace0=irg                                                       
       return                                                            
       end                                                               
+
       subroutine elnet(ka,parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,u
      *lam,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -53,7 +54,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(jerr.ne.0) return                                              
       vq=max(0d0,vp)                                                    
       vq=vq*ni/sum(vq)                                                  
-      if(ka .ne. 1)goto 10041                                           
+      if(ka .ne. 1)goto 10041 ! ka == 1(type.gaussian = covariance) であればelnetu、そうでないなら elnetnを処理して10051に行く                                           
       call elnetu  (parm,no,ni,x,y,w,jd,vq,cl,ne,nx,nlam,flmin,ulam,thr,
      *isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
       goto 10051                                                        
@@ -65,6 +66,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(vq)                                                    
       return                                                            
       end                                                               
+
       subroutine elnetu(parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,ula
      *m,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -118,6 +120,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(xm,xs,g,ju,xv,vlam)                                    
       return                                                            
       end                                                               
+
       subroutine standard(no,ni,x,y,w,isd,intr,ju,g,xm,xs,ym,ys,xv,jerr)
       implicit double precision(a-h,o-z)                                
       double precision x(no,ni),y(no),w(no),g(ni),xm(ni),xs(ni),xv(ni)  
@@ -186,6 +189,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(v)                                                     
       return                                                            
       end                                                               
+
       subroutine elnet1(beta,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,ulam,th
      *r,maxit,xv,  lmu,ao,ia,kin,rsqo,almo,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -359,6 +363,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(a,mm,c,da)                                             
       return                                                            
       end                                                               
+
       subroutine elnetn(parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,flmin,ulam,
      *thr,isd,  intr,maxit,lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -410,6 +415,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(xm,xs,ju,xv,vlam)                                      
       return                                                            
       end                                                               
+
       subroutine standard1(no,ni,x,y,w,isd,intr,ju,xm,xs,ym,ys,xv,jerr) 
       implicit double precision(a-h,o-z)                                
       double precision x(no,ni),y(no),w(no),xm(ni),xs(ni),xv(ni)        
@@ -472,6 +478,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(v)                                                     
       return                                                            
       end                                                               
+
       subroutine elnet2(beta,ni,ju,vp,cl,y,no,ne,nx,x,nlam,flmin,ulam,th
      *r,maxit,xv,  lmu,ao,ia,kin,rsqo,almo,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -649,6 +656,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(a,mm,g,ix)                                             
       return                                                            
       end                                                               
+
       subroutine chkvars(no,ni,x,ju)                                    
       implicit double precision(a-h,o-z)                                
       double precision x(no,ni)                                         
@@ -666,6 +674,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine uncomp(ni,ca,ia,nin,a)                                 
       implicit double precision(a-h,o-z)                                
       double precision ca(*),a(ni)                                      
@@ -686,6 +695,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine spelnet(ka,parm,no,ni,x,ix,jx,y,w,jd,vp,cl,ne,nx,nlam, 
      * flmin,ulam,thr,isd,intr,  maxit,lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr
      *)
@@ -714,6 +724,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(vq)                                                    
       return                                                            
       end                                                               
+
       subroutine spelnetu(parm,no,ni,x,ix,jx,y,w,jd,vp,cl,ne,nx,nlam,  f
      *lmin,ulam,thr,isd,intr,  maxit,lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -1387,6 +1398,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       dot=s                                                             
       return                                                            
       end                                                               
+
       subroutine lognet(parm,no,ni,nc,x,y,g,jd,vp,cl,ne,nx,nlam,flmin,ul
      *am,thr,  isd,intr,maxit,kopt,lmu,a0,ca,ia,nin,dev0,dev,alm,nlp,jer
      *r)
@@ -1410,7 +1422,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(jerr.ne.0) return                                              
       allocate(xm(1:ni),stat=jerr)                                      
       if(jerr.ne.0) return                                              
-      if(kopt .ne. 2)goto 12241                                         
+      if(kopt .ne. 2)goto 12241      ! koptによってallocate野」処理が変わる。koptが2の場合は xv を対象とし、その上で isd によって xs を対象とするかの判定がある                                    
       allocate(xv(1:ni),stat=jerr)                                      
       if(jerr.ne.0) return                                              
 12241 continue                                                          
@@ -1905,6 +1917,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(e,p,w)                                                 
       return                                                            
       end                                                               
+
       subroutine lognetn(parm,no,ni,nc,x,y,g,w,ju,vp,cl,ne,nx,nlam,flmin
      *,ulam,shri,  isd,intr,maxit,kopt,lmu,a0,a,m,kin,dev0,dev,alm,nlp,j
      *err)
@@ -2375,6 +2388,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(e,s)                                                   
       return                                                            
       end                                                               
+
       function elc(parm,n,cl,a,m)                                       
       implicit double precision(a-h,o-z)                                
       double precision a(n),cl(2)                                       
@@ -2455,6 +2469,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       elc=max(maxval(a-cl(2)),min(minval(a-cl(1)),elc))                 
       return                                                            
       end                                                               
+
       function nintot(ni,nx,nc,a,m,nin,is)                              
       implicit double precision(a-h,o-z)                                
       double precision a(nx,nc)                                         
@@ -2474,6 +2489,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine luncomp(ni,nx,nc,ca,ia,nin,a)                          
       implicit double precision(a-h,o-z)                                
       double precision ca(nx,nc),a(ni,nc)                               
@@ -2485,6 +2501,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine lmodval(nt,x,nc,nx,a0,ca,ia,nin,ans)                   
       implicit double precision(a-h,o-z)                                
       double precision a0(nc),ca(nx,nc),x(nt,*),ans(nc,nt)              
@@ -2500,6 +2517,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine splognet(parm,no,ni,nc,x,ix,jx,y,g,jd,vp,cl,ne,nx,nlam,
      *flmin,  ulam,thr,isd,intr,maxit,kopt,lmu,a0,ca,ia,nin,dev0,dev,alm
      *,nlp,jerr)
@@ -2606,6 +2624,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(kopt.eq.2) deallocate(xv)                                      
       return                                                            
       end                                                               
+
       subroutine multsplstandard2(no,ni,x,ix,jx,w,ju,isd,intr,xm,xs,xv) 
       implicit double precision(a-h,o-z)                                
       double precision x(*),w(no),xm(ni),xs(ni),xv(ni)                  
@@ -2646,6 +2665,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(isd.eq.0) xs=1.0                                               
       return                                                            
       end                                                               
+
       subroutine splstandard2(no,ni,x,ix,jx,w,ju,isd,intr,xm,xs)        
       implicit double precision(a-h,o-z)                                
       double precision x(*),w(no),xm(ni),xs(ni)                         
@@ -2681,6 +2701,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(isd.eq.0) xs=1.0                                               
       return                                                            
       end                                                               
+ 
       subroutine sprlognet2n(parm,no,ni,x,ix,jx,y,g,w,ju,vp,cl,ne,nx,nla
      *m,  flmin,ulam,shri,isd,intr,maxit,kopt,xb,xs,  lmu,a0,a,m,kin,dev
      *0,dev,alm,nlp,jerr)
@@ -3043,6 +3064,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(xm,b,bs,v,r,sc,xv,q,mm,ga,ixx)                         
       return                                                            
       end                                                               
+
       subroutine sprlognetn(parm,no,ni,nc,x,ix,jx,y,g,w,ju,vp,cl,ne,nx,n
      *lam,flmin,  ulam,shri,isd,intr,maxit,kopt,xb,xs,lmu,a0,a,m,kin,dev
      *0,dev,alm,nlp,jerr)
@@ -3520,6 +3542,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       deallocate(sxp,b,bs,v,r,xv,q,mm,is,xm,sc,ga,iy)                   
       return                                                            
       end                                                               
+
       subroutine lcmodval(nc,nx,a0,ca,ia,nin,x,ix,jx,n,f)               
       implicit double precision(a-h,o-z)                                
       double precision a0(nc),ca(nx,nc),x(*),f(nc,n)                    
@@ -3540,6 +3563,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine coxnet(parm,no,ni,x,y,d,g,w,jd,vp,cl,ne,nx,nlam,flmin,u
      *lam,thr,  maxit,isd,lmu,ca,ia,nin,dev0,dev,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
@@ -3600,6 +3624,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(isd.gt.0) deallocate(xs)                                       
       return                                                            
       end                                                               
+
       subroutine cstandard(no,ni,x,w,ju,isd,xs)                         
       implicit double precision(a-h,o-z)                                
       double precision x(no,ni),w(no),xs(ni)                            
@@ -3616,6 +3641,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       continue                                                          
       return                                                            
       end                                                               
+
       subroutine coxnet1(parm,no,ni,x,y,d,g,q,ju,vp,cl,ne,nx,nlam,flmin,
      *ulam,cthri,  isd,maxit,lmu,ao,m,kin,dev0,dev,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
