@@ -270,34 +270,19 @@ function (x, y, family = c("gaussian", "binomial", "poisson",
 
 #### 1. パラメータの設定、前処理、エラーチェック
 まずはパラメータの設定や前処理に関わる部分ですが、はじめに `family` の指定が問題ないかをチェックします。
-`glmnet` で使用可能な `family` は `glm` とは異なっており、`Gamma` / `inverse.gaussian` / `quasi-` が使えない代わりに、 `multinomial` / `cox` / `mgaussian` が使えるようになっています。
-ここで `multinomial` は多項分布、`mgaussian` は多変量正規分布を意味するようです。
-
-`family` のチェックには `match.arg` 関数が使われています。
-この関数の挙動を理解するのは少し難しいのですが、[こちらのブログ](https://hoxo-m.hatenablog.com/entry/20111025/p1)が参考になります。
 
 ```{r}
 ## 指定したfamilyが引数としてOKかチェック
 family = match.arg(family)
 ```
 
-続いて `alpha` のチェックに入ります。
-`glmnet` においてこの `alpha` は回帰係数のL1およびL2ノルムそれぞれに対する罰則の割合をコントロールします。
-より具体的には、 `glmnet` では罰則項は以下によって定義されます（https://cran.r-project.org/web/packages/glmnet/glmnet.pdf の P19より）：
+`glmnet` で使用可能な `family` は `glm` とは異なっており、`Gamma` / `inverse.gaussian` / `quasi-` が使えない代わりに、 `multinomial` / `cox` / `mgaussian` が使えるようになっています。
+ここで `multinomial` は多項分布、`mgaussian` は多変量正規分布を意味するようです。
 
+`family` のチェックには `match.arg` 関数が使われています。
+この関数の挙動を理解するのは少し難しいのですが、[こちらのブログ](https://hoxo-m.hatenablog.com/entry/20111025/p1)が参考になります。
 
-$$
-(1 − \alpha)/2||\beta||^{2}_{2} + \alpha||\beta||_{1}
-$$
-
-冒頭のコードでは `alpha = 1` または `alpha = 0` としましたが、上の式から `alpha = 1` のときにL2ノルムに対する罰則が消えてL1ノルムのみが残り（Lasso）、逆に `alpha = 0` とするとL1ノルムに対する罰則が消えてL2ノルムが残る（Ridge）ことがわかります。
-また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます。
-
-なお、ここでL2ノルムに対する罰則が1/2になっている理由はよくわかりませんでした。
-`glmnet` の help で引用されている[こちらの論文](https://web.stanford.edu/~hastie/Papers/glmnet.pdf)ではすでに $(1-\alpha)1/2||\beta||^2_2$ として定義されています。
-またscikit-learnでも同様にL2ノルムに対しては0.5を乗じているようです。
-https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
-誰か理由を教えてください。
+続いて `alpha` をチェックします：
 
 ```{r}
 ## alpha
@@ -315,7 +300,30 @@ if (alpha < 0) {
 alpha = as.double(alpha)
 ```
 
-続いて `match.call()` を用いて引数の指定を正式なものに直します。
+`glmnet` においてこの `alpha` は、回帰係数のL1およびL2ノルムそれぞれに対する罰則の割合をコントロールします。
+より具体的には、 `glmnet` では罰則項は以下によって定義されます（https://cran.r-project.org/web/packages/glmnet/glmnet.pdf の P19より）：
+
+
+$$
+(1 − \alpha)/2||\beta||^{2}_{2} + \alpha||\beta||_{1}
+$$
+
+冒頭のコードでは `alpha = 1` または `alpha = 0` としましたが、上の式から `alpha = 1` のときにL2ノルムに対する罰則が消えてL1ノルムのみが残り（Lasso）、逆に `alpha = 0` とするとL1ノルムに対する罰則が消えてL2ノルムが残る（Ridge）ことがわかります。
+また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます。
+
+なお、ここでL2ノルムに対する罰則が1/2になっている理由はよくわかりませんでした。
+`glmnet` の help で引用されている[こちらの論文](https://web.stanford.edu/~hastie/Papers/glmnet.pdf)ではすでに $(1-\alpha)1/2||\beta||^2_2$ として定義されています。
+またscikit-learnでも同様にL2ノルムに対しては0.5を乗じているようです。
+https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
+誰か理由を教えてください。
+
+続いて `match.call()` を用いて引数の指定を正式なものに直します：
+
+```{r}
+## match.call
+this.call = match.call()
+```
+
 これだけだと何を言っているかちょっとわからないと思いますので、以下の例で確認してみましょう：
 
 ```{r}
@@ -326,7 +334,6 @@ myfun <- function(abc, def, ghi) {
 
 上のように引数として `abc` 、 `def` 、 `ghi` を取る関数を定義します。
 このとき R では、引数の指定がない場合には順番通りに入力されます：
-
 
 ```{r}
 myfun(1, 2, 3)
@@ -362,10 +369,6 @@ match.call(myfun, call("myfun", 1, def = 3, ghi = 5))
 この通り、各引数に対して何を割り当てたかを得ることができます。
 便利ですね。
 
-```{r}
-## match.call
-this.call = match.call()
-```
 
 さらに続いて、 `nlambda` の指定です。
 ここでは $\lambda$ （罰則の大きさ）そのものではなく、検証する $\lambda$ の数（nubmer of lambda）を指定します（デフォルトは100）。
@@ -375,9 +378,7 @@ this.call = match.call()
 nlam = as.integer(nlambda)
 ```
 
-ここからは `y` 、 `x` および `weight` のチェックです。
-まず `y` に対する `drop` ですが、これは length が 1 であるような冗長な次元を落とす関数です。
-続いて `x` の行数が `weight` や `y` と合わない場合にエラーを返しています。
+ここからは `y` 、 `x` および `weight` のチェックです：
 
 ```{r}
 ## drop
@@ -417,8 +418,11 @@ if (is.null(vnames))
     vnames = paste("V", seq(nvars), sep = "")
 ```
 
+`y` に対する `drop` ですが、これは length が 1 であるような冗長な次元を落とす関数です。
+続いて `x` の行数が `weight` や `y` と合わない場合にエラーを返しています。
+
 以下ではモデルに含める変数や非ゼロとする変数などを指定します
-（ `nx(=pmax)` の方はちょっと理解がアヤシイので help の説明を書いておきます）。
+（ `nx(=pmax)` の方はちょっと理解がアヤシイので help の説明を書いておきます）：
 
 ```{r}
 ## 自由度
@@ -437,9 +441,28 @@ if (missing(exclude))
 ```
 
 次に変数ごとに異なるペナルティを与えるために `penalty.factor` を指定します。
-この数値が `lambda` に乗じられるため、例えば特定の変数に対して `penalty.factor = 0` としておけば罰則を与えないようにすることが可能となります（結果として常にモデルに採用されるようになる）。
+この数値が `lambda` に乗じられるため、例えば特定の変数に対して `penalty.factor = 0` としておけば罰則を与えないようにすることが可能となります（結果として常にモデルに採用されるようになる）：
 
-せっかくなので実際にやってみましょう。
+```{r}
+## 変数ごとに異なるペナルティを与える
+### デフォルトは 1 が入る
+### Inf が指定されている変数は exclude として扱われる
+if (any(penalty.factor == Inf)) {
+    exclude = c(exclude, seq(nvars)[penalty.factor == Inf])
+    exclude = sort(unique(exclude))
+}
+if (length(exclude) > 0) {
+    jd = match(exclude, seq(nvars), 0)
+    if (!all(jd > 0)) 
+        stop("Some excluded variables out of range")
+    penalty.factor[jd] = 1
+    jd = as.integer(c(length(jd), jd))
+}
+else jd = as.integer(0)
+vp = as.double(penalty.factor)
+```
+
+これはせっかくなので実際にやってみましょう。
 冒頭のコードを持ってきて、以下のように `lambda` を適当に設定してみます。
 
 ```{r}
@@ -468,26 +491,7 @@ coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3,
 このようにモデルから除外されることになります。
 さらに `penalty.factor = Inf` とすると、その変数は `exclude` として扱われるようになります。
 
-```{r}
-## 変数ごとに異なるペナルティを与える
-### デフォルトは 1 が入る
-### Inf が指定されている変数は exclude として扱われる
-if (any(penalty.factor == Inf)) {
-    exclude = c(exclude, seq(nvars)[penalty.factor == Inf])
-    exclude = sort(unique(exclude))
-}
-if (length(exclude) > 0) {
-    jd = match(exclude, seq(nvars), 0)
-    if (!all(jd > 0)) 
-        stop("Some excluded variables out of range")
-    penalty.factor[jd] = 1
-    jd = as.integer(c(length(jd), jd))
-}
-else jd = as.integer(0)
-vp = as.double(penalty.factor)
-```
-
-さらに `glmnet.control` で持っているパラメータを渡します。
+続いて `glmnet.control` で持っているパラメータを渡します。
 
 ```{r}
 ## 内部でデフォルトで持っているパラメータ 
@@ -579,6 +583,7 @@ thresh = as.double(thresh)
 
 次に、 `lambda` に関する指定となりますが、 `flmin` および `ulam` の使われ方がよく理解できなかったため、これらの説明は省略します。
 なお help にもありますが、通常は `lambda` には単一の値ではなく、候補となる値のベクトルを与えます。
+
  > Avoid supplying a single value for lambda (for predictions after CV use predict() instead).
 
 ```{r}
@@ -606,7 +611,28 @@ else {
 入力 `X` が疎行列である場合、`dgCMatrix` 形式に変換されます。
 ここで `dgCMatrix` とは列方向の志向性を持つ疎行列の形式です。
 
-せっかくなので疎行列における数値の格納方法についても見ておきましょう。
+```{r}
+## sparse matrix 
+### x が Matrix::sparseMatrix の場合は Matrix::dgCMatrix に変換する
+### dgCMatrix: csc順に並び替えて(csc形式)の疎行列圧縮保管
+is.sparse = FALSE
+ix = jx = NULL
+if (inherits(x, "sparseMatrix")) {
+    is.sparse = TRUE
+    x = as(x, "CsparseMatrix")
+    x = as(x, "dgCMatrix")
+    ### x@p は各列の非ゼロの値の個数を積み上げたものが格納されている（列数 + 1）
+    ### diff(x@p + 1) すれば各列の非ゼロの値の個数がわかる
+    ix = as.integer(x@p + 1)
+    ### x@i は各列の非ゼロの値の行番号が格納されている（なので length(x@i) が非ゼロの値の個数と一致する）
+    ### 0-index なので R のスタイルと合わせるために +1 しているのでしょう
+    jx = as.integer(x@i + 1)
+    ### x@x は非ゼロである値そのもののベクトル
+    x = as.double(x@x)
+}
+```
+
+ここも、せっかくなので疎行列における数値の格納方法についても見ておきましょう。
 以下のように疎行列を作成します：
 
 ```{r}
@@ -671,29 +697,7 @@ j
 下記の処理では`ix` には各列における非ゼロの要素の累積個数(+1)、 `jx` には行番号を代入しています。
 また `x` には元の疎行列における非ゼロの要素の値そのものをベクトルとして入力しており、説明変数の行列が疎行列であった場合、この時点で行列ではなくベクトルとして扱われることになります。
 
-```{r}
-## sparse matrix 
-### x が Matrix::sparseMatrix の場合は Matrix::dgCMatrix に変換する
-### dgCMatrix: csc順に並び替えて(csc形式)の疎行列圧縮保管
-is.sparse = FALSE
-ix = jx = NULL
-if (inherits(x, "sparseMatrix")) {
-    is.sparse = TRUE
-    x = as(x, "CsparseMatrix")
-    x = as(x, "dgCMatrix")
-    ### x@p は各列の非ゼロの値の個数を積み上げたものが格納されている（列数 + 1）
-    ### diff(x@p + 1) すれば各列の非ゼロの値の個数がわかる
-    ix = as.integer(x@p + 1)
-    ### x@i は各列の非ゼロの値の行番号が格納されている（なので length(x@i) が非ゼロの値の個数と一致する）
-    ### 0-index なので R のスタイルと合わせるために +1 しているのでしょう
-    jx = as.integer(x@i + 1)
-    ### x@x は非ゼロである値そのもののベクトル
-    x = as.double(x@x)
-}
-```
-
-
-ここはプログレスバーの指定です（出せるんですね）。
+次に、プログレスバーの指定です（出せるんですね）。
 
 ```{r}
 ## プログレスバー
@@ -704,11 +708,30 @@ if (trace.it) {
 }
 ```
 
-最後に最適化の手法についての指定です。
+そして最後に最適化の手法についての指定です。
 `family` が ``binomial` または `multinomial` の場合、 `glmnet` の引数である `type.logistic` および `type.multinomial` が評価され、（後の工程で）それに応じて最適化のエンジンが変わります。
 具体的には `lognet2m` 、 `lognetn` および `multlognetn` のどれが選ばれるかが決まります。
+これは別の機会に解説します（予定です）。
 
-ここで使われている `match.arg` ですが、せっかくなので挙動を確認しておきましょう：
+```{r}
+## 最適化の手法（ロジスティックおよび多項ロジスティックの時）
+### type.logistic = c("Newton", "modified.Newton")
+### Newton を指定なら 0、modified.Newton を指定なら 1 を返す
+### If "Newton" then the exact hessian is used (default), while "modified.Newton" uses an upper-bound on the hessian, and can be faster.
+kopt = switch(match.arg(type.logistic), Newton = 0, modified.Newton = 1)
+### type.multinomial = c("ungrouped", "grouped")
+### 多項ロジスティックで更にgroupedの場合は kopt は 2 となる
+### If "grouped" then a grouped lasso penalty is used on the multinomial coefficients for a variable. This ensures they are all in our out together. 
+### The default is "ungrouped"
+if (family == "multinomial") {
+    type.multinomial = match.arg(type.multinomial)
+    if (type.multinomial == "grouped") 
+        kopt = 2
+}
+kopt = as.integer(kopt)
+```
+
+最初の方で `family` のチェックに使われ、ここでも使われている `match.arg` ですが、せっかくなので挙動を確認しておきましょう：
 
 ```{r}
 ### 引数に type.logistic を持つ関数を定義
@@ -729,23 +752,6 @@ myfun(type.logistic = "modified.Newton")
 ```
 
 
-```{r}
-## 最適化の手法（ロジスティックおよび多項ロジスティックの時）
-### type.logistic = c("Newton", "modified.Newton")
-### Newton を指定なら 0、modified.Newton を指定なら 1 を返す
-### If "Newton" then the exact hessian is used (default), while "modified.Newton" uses an upper-bound on the hessian, and can be faster.
-kopt = switch(match.arg(type.logistic), Newton = 0, modified.Newton = 1)
-### type.multinomial = c("ungrouped", "grouped")
-### 多項ロジスティックで更にgroupedの場合は kopt は 2 となる
-### If "grouped" then a grouped lasso penalty is used on the multinomial coefficients for a variable. This ensures they are all in our out together. 
-### The default is "ungrouped"
-if (family == "multinomial") {
-    type.multinomial = match.arg(type.multinomial)
-    if (type.multinomial == "grouped") 
-        kopt = 2
-}
-kopt = as.integer(kopt)
-```
 
 #### 2. フィッティング
 以上でパラメータの設定や前処理が終わりましたので次はフィッティングです。
@@ -824,17 +830,87 @@ if (trace.it) {
 
 
 #### 3. 後処理
+最後に後処理です。
 
+```{r}
+# 後処理
+## lambda が指定されておらず fit$lambda が 3 パターン以上検証されている場合、先頭を差し替える
+## glmnet::fix.lam
+## function (lam) {
+## if (length(lam) > 2) {
+##     llam = log(lam)
+##     lam[1] = exp(2 * llam[2] - llam[3])
+## }
+## lam
+## }
+if (is.null(lambda)) 
+    fit$lambda = fix.lam(fit$lambda)
+## call
+fit$call = this.call
+## レコード数
+fit$nobs = nobs
+## class に glmnet を追加
+class(fit) = c(class(fit), "glmnet")
 
+# リターン
+## relax が TRUE の場合、解パスの各セットについて罰則なしでモデルをフィッティングする   
+## If TRUE then for each active set in the path of solutions, the model is refit without any regularization. See details for more information. 
+## This argument is new, and users may experience convergence issues with small datasets, especially with non-gaussian families. 
+## Limiting the value of ’maxp’ can alleviate these issues in some cases.
+if (relax) 
+    relax.glmnet(fit, x = x, y = y, weights = weights, offset = offset, 
+        lower.limits = lower.limits, upper.limits = upper.limits, 
+        check.args = FALSE, ...)
+else fit
+```
 
-これ以降は
+この後処理で目立つ工程としては `relax` の部分でしょう。
+ここで `relax` は help によると、
 
+> If relax=TRUE a duplicate sequence of models is produced, where each active set in the elastic-net path is refit without regularization. The result of this is a matching "glmnet" object which is stored on the original object in a component named "relaxed", and is part of the glmnet output. 
 
+ということで、`glmnet` によって変数選択された結果を用いて、罰則なしで再度フィッティングを行うオプションのようです。
+これも実際にやってみるのが早いと思いますので、以下のように実行してみます：
 
-https://tutel.me/c/programming/questions/33533045/how+can+i+see+the+source+code+of+fortran+in+r
+```{r}
+lasso_02 <- glmnet(x, y, family = "gaussian", relax = T)
+```
 
+すると、先程の結果（ `lasso` ）に、 `lasso_02$relaxed` という結果が追加されていることがわかりますが、内容は `lasso` とほとんど同じです。
 
+```{r}
+str(lasso)
+str(lasso_02$relaxed)
+```
 
+ここで `lasso_02$relaxed` の中身を少し見てみると、例えば `beta` には以下のような数値が入っています。
 
-### おわりに
+```{r}
+lasso_02$relaxed$beta[, 1:6]
+```
 
+これは何かと言うと、少しずつ罰則の重みを変えたことで変数が選択された状態で通常の線形回帰を当てはめたときの回帰係数となっています。
+例えば `lasso_02$relaxed$beta[, 6]` には、変数として選択された `pop15` と `ddpi` それぞれの回帰係数が入っています。
+実際に `lm` の結果と一致するか見てみましょう：
+
+```{r}
+coef(lm(y ~ x[, c(1, 4)]))
+```
+
+合っていますね。
+ところで切片の推定値が入っている `lasso_02$relaxed$a0` の値は少し異なるようです：
+
+```{r}
+lasso_02$relaxed$a0[6]
+```
+
+もしかしたら標準化の違いかとも思いましたがそれでもないようで、この理由はわかりませんでした。
+
+```{r}
+lasso_03 <- glmnet(x, y, family = "gaussian", relax = T, standardize = F)
+lasso_03$relaxed$a0[6]
+```
+
+`glmnet()` の実装は以上となります。
+次回はフィッティングの部分で呼ばれている `elnet` を詳しく見ていきましょう。
+なお `gam` のときとは違い、 `glmnet` では library をインストールしてもソースコードは付いてきませんでしたので、[こちら](https://tutel.me/c/programming/questions/33533045/how+can+i+see+the+source+code+of+fortran+in+r)を参考に fortran のソースコードを取得しました。
