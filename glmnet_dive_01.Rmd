@@ -78,7 +78,7 @@ coef(glmnet(x, y, family = "gaussian", alpha = 0.7, lambda = 0.5))
 
 ### `glmnet` の実装
 それでは `glmnet` という関数がどのように実装されているのか見ていきましょう。
-まずはいつものように全体をさっと眺め、見通しをよくします。
+まずはいつものように全体を眺め、見通しをよくします。
 
 ```{r}
 function (x, y, family = c("gaussian", "binomial", "poisson", 
@@ -602,15 +602,79 @@ else {
 }
 ```
 
+次に疎行列の指定です。
+入力 `X` が疎行列である場合、`dgCMatrix` 形式に変換されます。
+ここで `dgCMatrix` とは列方向の志向性を持つ疎行列の形式です。
 
+せっかくなので疎行列における数値の格納方法についても見ておきましょう。
+以下のように疎行列を作成します：
 
+```{r}
+## library(Matrix)
+set.seed(1234)
+i <- c(1, 5, 18)
+j <- c(4, 13, 19)
+n <- rnorm(3)
+
+m <- matrix(0, 20, 20)
+for (k in 1:length(n)) {
+  m[i[k], j[k]] <- n[k]
+}
+
+s_m <- as(m, "dgCMatrix")
+# for (k in 1:20) {
+#   dimnames(s_m)[[2]][i] <- paste(rep(letters[i], 3), collapse = "")
+# }
+```
+
+ここで `s_m` は行列 `m` を疎行列として扱ったものです。
+`str()` で確認すると、 `s_m` には
+ - `@ i` ：非ゼロの要素の入っていた行番号( 0-index であることに注意)
+ - `@ p` ：各列における非ゼロの要素の個数を積み上げたもの
+ - `@ Dim` ：行列の次元
+ - `@ Dimnames` ：行列の各次元の名前
+ - `@ x` ：非ゼロの要素の数値
+ - `@ factors` ：（これはちょっとわかりませんでした）
+が格納されています。
+
+```{r}
+str(s_m)
+```
+
+ここで `@ i` には非ゼロである各要素の行番号が入るため行列 `m` を作ったときの行番号の指定 `i` に対応しますが、0-index であるため数字は1つずつ小さくなっています。
+
+```{r}
+print(i- 1)
+print(s_m@i)
+```
+
+ちょっとわかりにくいのが `@ p` で、ここには各列における非ゼロの要素の個数の累積が格納され、列数に対応します（ただし最初に 0 が追加されるため、列数 + 1 の長さになります）。
+今回の例では行列の列数が 20 なので、length が 21 となります。
+
+```{r}
+length(s_m@p)
+```
+
+このベクトルには非ゼロの要素の個数の累積が入っているため、差分を取ると元の行列で非ゼロの要素が入っていた列を得ることができます。
+
+```{r}
+diff(s_m@p)
+```
+
+列番号を指定した `j` と比較してみましょう：
+
+```{r}
+which(diff(s_m@p) == 1)
+j
+```
+
+下記の処理では`ix` には各列における非ゼロの要素の累積個数(+1)、 `jx` には行番号を代入しています。
+また `x` には元の疎行列における非ゼロの要素の値そのものをベクトルとして入力しており、説明変数の行列が疎行列であった場合、この時点で行列ではなくベクトルとして扱われることになります。
 
 ```{r}
 ## sparse matrix 
 ### x が Matrix::sparseMatrix の場合は Matrix::dgCMatrix に変換する
-### 違いはわからない
 ### dgCMatrix: csc順に並び替えて(csc形式)の疎行列圧縮保管
-### https://ryamada.hatenadiary.jp/entry/20150310/1425944605
 is.sparse = FALSE
 ix = jx = NULL
 if (inherits(x, "sparseMatrix")) {
@@ -628,6 +692,9 @@ if (inherits(x, "sparseMatrix")) {
 }
 ```
 
+
+ここはプログレスバーの指定です（出せるんですね）。
+
 ```{r}
 ## プログレスバー
 if (trace.it) {
@@ -635,6 +702,30 @@ if (trace.it) {
         cat("Training Fit\n")
     pb <- createPB(min = 0, max = nlam, initial = 0, style = 3)
 }
+```
+
+最後に最適化の手法についての指定です。
+`family` が ``binomial` または `multinomial` の場合、 `glmnet` の引数である `type.logistic` および `type.multinomial` が評価され、（後の工程で）それに応じて最適化のエンジンが変わります。
+具体的には `lognet2m` 、 `lognetn` および `multlognetn` のどれが選ばれるかが決まります。
+
+ここで使われている `match.arg` ですが、せっかくなので挙動を確認しておきましょう：
+
+```{r}
+### 引数に type.logistic を持つ関数を定義
+myfun <- function(a = "aaa", type.logistic = c("Newton", "modified.Newton")) {
+  ### 呼び出し元の関数の引数をチェックし、 Newton なら 0、modified.Newton なら 1を割り当てる
+  kopt <- switch(match.arg(type.logistic), Newton = 0, modified.Newton = 1)
+  kopt
+}
+```
+
+上のような関数を定義し、以下のように呼び出すと、結果はそれぞれ 0, 0, 1 となります。
+
+```{r}
+myfun()
+myfun(type.logistic = "Newton")
+myfun(type.logistic = "modified.Newton")
+
 ```
 
 
@@ -656,14 +747,92 @@ if (family == "multinomial") {
 kopt = as.integer(kopt)
 ```
 
-
-
 #### 2. フィッティング
+以上でパラメータの設定や前処理が終わりましたので次はフィッティングです。
+といってもここでは `family` に応じて呼び出す関数を変えているだけなので、詳細は一旦スキップしましょう。
+
+```{r}
+# フィッティング
+## family に応じてその後に呼び出す関数を変える
+fit = switch(family,
+                ### gaussian のときは elnet 
+                gaussian = elnet(x, is.sparse, ix, jx, 
+    y, weights, offset, type.gaussian, alpha, nobs, nvars, 
+    jd, vp, cl, ne, nx, nlam, flmin, ulam, thresh, isd, intr, 
+    vnames, maxit), 
+                ### poisson のときは fishnet
+                poisson = fishnet(x, is.sparse, ix, jx, 
+    y, weights, offset, alpha, nobs, nvars, jd, vp, cl, ne, 
+    nx, nlam, flmin, ulam, thresh, isd, intr, vnames, maxit),
+                ### binomial のときは lognet
+                binomial = lognet(x, is.sparse, ix, jx, y, weights, offset, 
+        alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, flmin, 
+        ulam, thresh, isd, intr, vnames, maxit, kopt, family), 
+                ### multinomial のときも lognet
+                multinomial = lognet(x, is.sparse, ix, jx, y, weights, 
+        offset, alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, 
+        flmin, ulam, thresh, isd, intr, vnames, maxit, kopt, 
+        family), 
+                ### cox のときは coxnet
+                cox = coxnet(x, is.sparse, ix, jx, y, weights, 
+        offset, alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, 
+        flmin, ulam, thresh, isd, vnames, maxit), 
+                ### mgaussian のときは mrelnet
+                mgaussian = mrelnet(x, 
+        is.sparse, ix, jx, y, weights, offset, alpha, nobs, 
+        nvars, jd, vp, cl, ne, nx, nlam, flmin, ulam, thresh, 
+        isd, jsd, intr, vnames, maxit))
+## プログレスバー
+if (trace.it) {
+    utils::setTxtProgressBar(pb, nlam)
+    close(pb)
+}
+```
+
+
+なおここでそれぞれの関数に渡されている引数を比較すると以下のようになります（一部はよくわかりませんでした）：
+
+| 引数 | 説明 | elnet | fishnet | lognet | coxnet | mrelnet |
+|------|------|-------|---------|--------|--------|---------|
+| x | 説明変数の行列 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| is.sparse | 疎行列であるかの指定 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| ix |  | 〇 | 〇 | 〇 | 〇 | 〇 |
+| jx | 疎行列における非ゼロの要素の行番号 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| y | 目的変数の行列 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| weights | 観測値に対する重み | 〇 | 〇 | 〇 | 〇 | 〇 |
+| offset | オフセット | 〇 | 〇 | 〇 | 〇 | 〇 |
+| type.gaussian | 1:covariance, 2:naïve | 〇 | - | - | - | - |
+| alpha | L1とL2に対する重みの調整パラメータ | 〇 | 〇 | 〇 | 〇 | 〇 |
+| nobs | レコード数 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| nvars | 説明変数の数 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| jd |  | 〇 | 〇 | 〇 | 〇 | 〇 |
+| vp | 各変数に対する罰則の重み（penalty.factor） | 〇 | 〇 | 〇 | 〇 | 〇 |
+| cl |  | 〇 | 〇 | 〇 | 〇 | 〇 |
+| ne | モデルに含まれる変数の上限。ne = dfmax = nvars + 1 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| nx |  | 〇 | 〇 | 〇 | 〇 | 〇 |
+| nlam | lambdaの数 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| flmin | ? | 〇 | 〇 | 〇 | 〇 | 〇 |
+| ulam | ? | 〇 | 〇 | 〇 | 〇 | 〇 |
+| thresh | 収束判定の閾値 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| isd | standardizeするかの指定 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| jsd |  | - | - | - | - | 〇 |
+| intr | 切片（Intercept）を含めるかの指定 | 〇 | 〇 | 〇 | - | 〇 |
+| vnames | 変数名 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| maxit | 反復回数の上限 | 〇 | 〇 | 〇 | 〇 | 〇 |
+| kopt | 最適化の手法 | - | - | 〇 | - | - |
+| family | family | - | - | 〇 | - | - |
+
+
+#### 3. 後処理
+
+
+
+これ以降は
+
 
 
 https://tutel.me/c/programming/questions/33533045/how+can+i+see+the+source+code+of+fortran+in+r
 
-#### 3. 後処理
 
 
 
