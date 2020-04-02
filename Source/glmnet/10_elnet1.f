@@ -33,7 +33,7 @@
       iz=0                                                              
       mnl=min(mnlam,nlam)                                               
       do 10281 m=1,nlam                                                 
-      if(itrace.ne.0) call setpb(m-1)                                   
+      if(itrace.ne.0) call setpb(m-1)  ! プログレスバー                                 
       if(flmin .lt. 1.0)goto 10301                                      
       alm=ulam(m)                                                       
       goto 10291                                                        
@@ -92,7 +92,7 @@
       ia(nin)=k                                                         
 10391 continue                                                          
       del=a(k)-ak                                                       
-      rsq=rsq+del*(2.0*g(k)-del*xv(k))                                  
+      rsq=rsq+del*(2.0*g(k)-del*xv(k))  ! この辺がポイントか？                                
       dlx=max(xv(k)*del**2,dlx)                                         
       do 10451 j=1,ni                                                   
       if(ju(j).ne.0) g(j)=g(j)-c(j,mm(k))*del                           
