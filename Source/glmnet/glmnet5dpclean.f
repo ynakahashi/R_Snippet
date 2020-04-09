@@ -1507,6 +1507,7 @@ c     mortran 2.0     (version of 7/04/75 mod 7/4/87 (ajc))
       if(kopt.eq.2) deallocate(xv)                                      
       return                                                            
       end                                                               
+
       subroutine lstandard1(no,ni,x,w,ju,isd,intr,xm,xs)                
       implicit double precision(a-h,o-z)                                
       double precision x(no,ni),w(no),xm(ni),xs(ni)                     
