@@ -24,27 +24,31 @@
       if(flmin .ge. 1.0)goto 10271                                      
       eqs=max(eps,flmin)                                                
       alf=eqs**(1.0/(nlam-1))                                           
-10271 continue                                                          
-      rsq=0.0                                                           
+10271 continue
+      ! パラメータの初期化                                                          
+      rsq=0.0 ! 残差平方和                                                          
       a=0.0                                                             
       mm=0                                                              
       nlp=0                                                             
       nin=nlp                                                           
       iz=0                                                              
       mnl=min(mnlam,nlam)                                               
-      do 10281 m=1,nlam                                                 
+      ! ここからがループの本体
+      !! 以下のまとまりは、 flmin が 1.0 より小さい場合にループの回数（m）によって alm の指定を変更している
+      !! flmin が 1.0 以上の場合は alm = ulam(m) とし、10301 ~ 10331 の処理をスキップ
+      do 10281 m=1,nlam ! nlambda なので lambda の個数だけループ。 m はループのインデックス                                                
       if(itrace.ne.0) call setpb(m-1)  ! プログレスバー                                 
       if(flmin .lt. 1.0)goto 10301                                      
       alm=ulam(m)                                                       
       goto 10291                                                        
-10301 if(m .le. 2)goto 10311                                            
-      alm=alm*alf                                                       
+10301 if(m .le. 2)goto 10311 ! ループの１回目と２回目はここをスキップ                                           
+      alm=alm*alf ! ループの３回目からは alm を更新して 10311、10321、10341、10331 の処理をスキップ                                                      
       goto 10291                                                        
-10311 if(m .ne. 1)goto 10321                                            
-      alm=big                                                           
+10311 if(m .ne. 1)goto 10321 ! ループの２回目はここをスキップ                                           
+      alm=big     ! ループの１回目は alm を big にして 10321、10341の処理をスキップ                                                      
       goto 10331                                                        
 10321 continue                                                          
-      alm=0.0                                                           
+      alm=0.0     ! ループの２回目は alm を 0　にする                                                      
       do 10341 j=1,ni                                                   
       if(ju(j).eq.0)goto 10341                                          
       if(vp(j).le.0.0)goto 10341                                        
@@ -91,7 +95,10 @@
       mm(k)=nin                                                         
       ia(nin)=k                                                         
 10391 continue                                                          
-      del=a(k)-ak                                                       
+      del=a(k)-ak
+      ! rsq = rsq + del * (2.0 * g(k) - del * xv(k))
+      ! rsq は残差平方和
+      ! del は a(k)-ak                                                      
       rsq=rsq+del*(2.0*g(k)-del*xv(k))  ! この辺がポイントか？                                
       dlx=max(xv(k)*del**2,dlx)                                         
       do 10451 j=1,ni                                                   
