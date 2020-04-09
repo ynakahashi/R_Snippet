@@ -44,9 +44,9 @@
       continue                                                          
       sw=sum(ww)                                                        
       ww=ww/sw                                                          
-      if(nc .ne. 1)goto 12311  ! nc .ne. 1 なら lognet2n 、そうでないなら lognetn or mullognetn                                       
+      if(nc .ne. 1)goto 12311  ! nc .ne. 1 なら lognetn or mullognetn 、そうでないなら lognet2n                                      
       call lstandard1(no,ni,x,ww,ju,isd,intr,xm,xs)                     
-      if(isd .le. 0)goto 12331 ! ここで isd .le. 0(標準化の指定が0) なら直接 *netn に飛ぶ、そうでないなら cl() の処理を挟む                                      
+      if(isd .le. 0)goto 12331 ! ここで isd .le. 0(標準化の指定が0) なら直接 lognet2n に飛ぶ、そうでないなら cl() の処理を挟む                                      
       do 12341 j=1,ni  ! 列の数？                                                 
       cl(:,j)=cl(:,j)*xs(j) ! 元の値に xs を乗じる（多分標準化してる）                                            
 12341 continue                                                          
