@@ -34,6 +34,7 @@ function (x, is.sparse, ix, jx, y, weights, offset, type.gaussian = c("covarianc
     ## 疎行列であるかで関数を変える
     fit = if (is.sparse) 
         .Fortran("spelnet", ka, parm = alpha, nobs, nvars, x, 
+            # 疎行列である場合、以下の ix, jx が引数として追加される
             # ix, jx は疎行列における非ゼロの要素の累積個数と行番号
             ix, jx, 
             y, weights, jd, vp, cl, ne, nx, nlam, flmin, 
@@ -61,7 +62,7 @@ function (x, is.sparse, ix, jx, y, weights, offset, type.gaussian = c("covarianc
     }
     ## パラメータ（切片、回帰係数、自由度、次元、lambda）を取ってくる
     outlist = getcoef(fit, nvars, nx, vnames)
-    ## パラメータ（xxxxxxxxxx）を取ってきて outlist に結合する
+    ## パラメータ（fit$rsqに入っている何か、および Null Deviance、 fit$nlp、エラーのステータス、オフセット）を取ってきて outlist に結合する
     dev = fit$rsq[seq(fit$lmu)]
     outlist = c(outlist, list(dev.ratio = dev, nulldev = nulldev, 
         npasses = fit$nlp, jerr = fit$jerr, offset = is.offset))
