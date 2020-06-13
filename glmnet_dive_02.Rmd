@@ -13,7 +13,11 @@ output: html_document
 
 ### `elnet` の実装
 それでは早速 `elnet` という関数を見ていきましょう。
-この関数はそれほど長くないので、いきなり内容の確認に入ります。
+ちなみにここでの `elnet` はコンソールで `elnet` と打っても表示されませんが、C や Fortran で書かれたものではなくて単に `glmnet` からエクスポートされていない関数なので `glmnet:::elnet` で中身を見ることができます。
+
+この関数はそれほど長くないのでいきなり内容の確認に入りますが、他の多くの関数同様に `elnet` でも最初はパラメータの受け取り・確認を行います。
+下のブロックでは反復回数（ `maxit` ）、観測値の重み（ `weights` ）を受け取った後、 `type.gaussian` の指定内容によって `ka` というパラメータに格納する値を変えています。
+
 ```{r}
 function (x, is.sparse, ix, jx, y, weights, offset, type.gaussian = c("covariance", 
     "naive"), alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, flmin, 
@@ -28,6 +32,14 @@ function (x, is.sparse, ix, jx, y, weights, offset, type.gaussian = c("covarianc
     type.gaussian = match.arg(type.gaussian)
     ka = as.integer(switch(type.gaussian, covariance = 1, naive = 2, 
         ))
+```
+
+`ka` はさらに先の処理で `elnetu` と `elnetn` という２つのサブルーチンのどちらを呼ぶかを決めていますので、 `type.gaussian` の指定に合わせてサブルーチンを変更しているということですね。
+
+以下では `y` および `offset` （存在する場合）を double に変換しています。
+また `y` の重み付き平均を使って Null Deviance （残差逸脱度）を計算しています。
+
+```{r}
     ### y の storage.mode
     storage.mode(y) = "double"
     ### offset
@@ -41,701 +53,212 @@ function (x, is.sparse, ix, jx, y, weights, offset, type.gaussian = c("covarianc
     }
     ### 重み付き平均
     ybar = weighted.mean(y, weights)
+    ### Null Deviance（帰無モデルの残差逸脱度）
     nulldev = sum(weights * (y - ybar)^2)
     if (nulldev == 0) 
         stop("y is constant; gaussian glmnet fails at standardization step")
-    
+```
+
+
+次のブロックで早速フィッティングに入ります。
+`is.sparse` が指定されているか否かで `spelnet` と `elnet` のどちらが呼ばれるかが決まりますが、引数の違いとしては `spelnet` において `x` が `as.double` とされており、 `ix` と `jx` （いずれも疎行列において非ゼロの要素の座標を特定するための数値）が追加されています。
+
+
+```{r}
     # 2. フィッティング
+    ## 疎行列であるかで関数を変える
     fit = if (is.sparse) 
         .Fortran("spelnet", ka, parm = alpha, nobs, nvars, x, 
-            ix, jx, y, weights, jd, vp, cl, ne, nx, nlam, flmin, 
+            # 疎行列である場合、以下の ix, jx が引数として追加される
+            # ix, jx は疎行列における非ゼロの要素の累積個数と行番号
+            ix, jx, 
+            y, weights, jd, vp, cl, ne, nx, nlam, flmin, 
             ulam, thresh, isd, intr, maxit, lmu = integer(1), 
             a0 = double(nlam), ca = double(nx * nlam), ia = integer(nx), 
             nin = integer(nlam), rsq = double(nlam), alm = double(nlam), 
             nlp = integer(1), jerr = integer(1), PACKAGE = "glmnet")
     else .Fortran("elnet", ka, parm = alpha, nobs, nvars, as.double(x), 
-        y, weights, jd, vp, cl, ne, nx, nlam, flmin, ulam, thresh, 
-        isd, intr, maxit, lmu = integer(1), a0 = double(nlam), 
+        y, weights, jd, vp, cl, ne, nx, nlam, flmin, 
+        ulam, thresh, isd, intr, maxit, lmu = integer(1), 
+        a0 = double(nlam), ca = double(nx * nlam), ia = integer(nx), 
+        nin = integer(nlam),  rsq = double(nlam), alm = double(nlam), 
+        nlp = integer(1), jerr = integer(1), PACKAGE = "glmnet")
         # nx は 非ゼロの変数の個数
         # nlam は検証する lambda の個数
         # なので ca は変数の数 * lambda の数
-        ca = double(nx * nlam), ia = integer(nx), nin = integer(nlam),  
-        rsq = double(nlam), alm = double(nlam), nlp = integer(1), 
-        jerr = integer(1), PACKAGE = "glmnet")
-    
-    
+
+```
+
+処理を抜けたあとは、エラーをチェックした上で必要なパラメータを取得します。
+
+```{r}
+    # 3. 後処理
+    ## エラーチェック
     if (fit$jerr != 0) {
         errmsg = jerr(fit$jerr, maxit, pmax = nx, family = "gaussian")
         if (errmsg$fatal) 
             stop(errmsg$msg, call. = FALSE)
         else warning(errmsg$msg, call. = FALSE)
     }
+    ## パラメータ（切片、回帰係数、自由度、次元、lambda）を取ってくる
     outlist = getcoef(fit, nvars, nx, vnames)
+    
+    ## パラメータ（xxxxxxxxxx）を取ってきて outlist に結合する
     dev = fit$rsq[seq(fit$lmu)]
+    
     outlist = c(outlist, list(dev.ratio = dev, nulldev = nulldev, 
         npasses = fit$nlp, jerr = fit$jerr, offset = is.offset))
+    ## elnet クラスを付与する
     class(outlist) = "elnet"
     outlist
 }
 ```
 
+それでは次に `elnet` の本体である `elnet` の中身を見ていきましょう。
 
-ちなみにここでの `elnet` はコンソールで `elnet` と打っても表示されませんが、C や Fortran で書かれたものではなくて単に `glmnet` からエクスポートされていない関数です。
-なので `glmnet:::elnet` で中身を見ることができます。
+### `elnet.f` の実装
+#### elnet
+上記のフィッティングのセクションで `elnet` は `.Fortran("elnet")` として呼ばれていました。これまで `glm` や `GAM` で見てきたときと同じように、 `glmnet` でもやはり最後には fortran に行き着くようですね。
 
+と言ってもここではまだ関数自体は大きくなく、下のように（コメント抜きで）30行程度で書かれています。
 
+```{fortran}
+      subroutine elnet(ka,parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,u
+     *lam,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+      implicit double precision(a-h,o-z)                                
+      double precision x(no,ni),y(no),w(no),vp(ni),ca(nx,nlam),cl(2,ni) 
+      double precision ulam(nlam),a0(nlam),rsq(nlam),alm(nlam)          
+      integer jd(*),ia(nx),nin(nlam)                                    
+      double precision, dimension (:), allocatable :: vq;               
 
+      ! vp が 0.0 だった場合には jerr = 100000 として return してしまう
+      if(maxval(vp) .gt. 0.0)goto 10021                                 
+      jerr=10000                                                        
+      return                                                            
+10021 continue                                                          
+      allocate(vq(1:ni),stat=jerr)
 
-`glmnet` では以上のように、
- 1. パラメータの設定、前処理、エラーチェック
- 2. フィッティング
- 3. 後処理
-といったステップで処理が進んでおり、これは過去にみてきた `glm` や `gam` と同様ですね。
-それでは各ステップを細かく見ていきましょう。
+      ! ここでも jerr に 0 以外の数値が入っていたら return してしまう
+      if(jerr.ne.0) return                                              
 
-#### 1. パラメータの設定、前処理、エラーチェック
-まずはパラメータの設定や前処理に関わる部分ですが、はじめに `family` の指定が問題ないかをチェックします。
+      ! vp の値によって vq を生成
+      ! デフォルトは 1
+      ! ni は nvars で変数の数なので、 vq にはデフォルトでは変数の数が入る
+      ! でもなんで sum(vq) なんだろ
+      vq=max(0d0,vp)                                                    
+      vq=vq*ni/sum(vq)
 
-```{r}
-## 指定したfamilyが引数としてOKかチェック
-family = match.arg(family)
+      ! elnetu か elnetn のどちらを呼ぶかは ka .ne. 1 であるかで判断している
+      ! 1 でなければ elnetn 、 1 なら elnetu
+      if(ka .ne. 1)goto 10041                                           
+      call elnetu  (parm,no,ni,x,y,w,jd,vq,cl,ne,nx,nlam,flmin,ulam,thr,
+     *isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+      goto 10051                                                        
+10041 continue                                                          
+      call elnetn (parm,no,ni,x,y,w,jd,vq,cl,ne,nx,nlam,flmin,ulam,thr,i
+     *sd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+10051 continue                                                          
+      continue                                                          
+      deallocate(vq)                                                    
+      return                                                            
+      end                                                               
 ```
 
-`glmnet` で使用可能な `family` は `glm` とは異なっており、`Gamma` / `inverse.gaussian` / `quasi-` が使えない代わりに、 `multinomial` / `cox` / `mgaussian` が使えるようになっています。
-ここで `multinomial` は多項分布、`mgaussian` は多変量正規分布を意味するようです。
+`goto` を多用していますね。。。
+変数宣言以下で気になるところとしては、 `vp` が 0 だったときの挙動と、 `elnetu` を呼ぶところでしょうか。 
 
-`family` のチェックには `match.arg` 関数が使われています。
-この関数の挙動を理解するのは少し難しいのですが、[こちらのブログ](https://hoxo-m.hatenablog.com/entry/20111025/p1)が参考になります。
+`vp` は前回の記事で確認した通り、 `glmnet` のなかで `vp = as.double(penalty.factor)` として定義されています。
+この `penalty.factor` はデフォルトでは 1 が入りますので基本的には `goto 10021` で飛ばされてしまいます。
+このセクションで引っかかるのは明示的に `penalty.factor` に 0 を指定した場合ですね。
 
-続いて `alpha` をチェックします：
-
-```{r}
-## alpha
-### LassoとRidgeそれぞれに対するペナルティの配分を決めるパラメータ
-### glmnetにおける罰則項は以下で定義
-### alphaは0~1で、1ならLasso、0ならRidgeに対応
-if (alpha > 1) {
-    warning("alpha >1; set to 1")
-    alpha = 1
-}
-if (alpha < 0) {
-    warning("alpha<0; set to 0")
-    alpha = 0
-}
-alpha = as.double(alpha)
+```{fortran}
+      ! vp は各変数に対する罰則の重み（デフォルトは 1） が入ったベクトル
+      ! vp = as.double(penalty.factor)
+      ! jerr の数値で後続の処理で出力するエラーメッセージが決まる
+      if(maxval(vp) .gt. 0.0)goto 10021                                 
+      jerr=10000                                                        
+      return                                                            
+10021 continue                                                          
+      allocate(vq(1:ni),stat=jerr)
 ```
 
-`glmnet` においてこの `alpha` は、回帰係数のL1およびL2ノルムそれぞれに対する罰則の割合をコントロールします。
-より具体的には、 `glmnet` では罰則項は以下によって定義されます（https://cran.r-project.org/web/packages/glmnet/glmnet.pdf の P19より）：
-
-
-$$
-(1 − \alpha)/2||\beta||^{2}_{2} + \alpha||\beta||_{1}
-$$
-
-冒頭のコードでは `alpha = 1` または `alpha = 0` としましたが、上の式から `alpha = 1` のときにL2ノルムに対する罰則が消えてL1ノルムのみが残り（Lasso）、逆に `alpha = 0` とするとL1ノルムに対する罰則が消えてL2ノルムが残る（Ridge）ことがわかります。
-また `alpha` を (0, 1) とすると両者がそれぞれの割合でブレンドされます。
-
-なお、ここでL2ノルムに対する罰則が1/2になっている理由はよくわかりませんでした。
-`glmnet` の help で引用されている[こちらの論文](https://web.stanford.edu/~hastie/Papers/glmnet.pdf)ではすでに $(1-\alpha)1/2||\beta||^2_2$ として定義されています。
-またscikit-learnでも同様にL2ノルムに対しては0.5を乗じているようです。
-https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html
-誰か理由を教えてください。
-
-続いて `match.call()` を用いて引数の指定を正式なものに直します：
+では `penalty.factor` に 0 を指定した場合はどうなるかと言うと、 `jerr` に 10000 が入力されて return されます。
+この `jerr` は先ほど確認した後処理において `errmsg = jerr(fit$jerr, maxit, pmax = nx, family = "gaussian")` としてエラーメッセージに変換されるのでした。
+この `jerr` という関数は
 
 ```{r}
-## match.call
-this.call = match.call()
-```
-
-これだけだと何を言っているかちょっとわからないと思いますので、以下の例で確認してみましょう：
-
-```{r}
-myfun <- function(abc, def, ghi) { 
-    return(abc + 2*def + 3*ghi)
-}
-```
-
-上のように引数として `abc` 、 `def` 、 `ghi` を取る関数を定義します。
-このとき R では、引数の指定がない場合には順番通りに入力されます：
-
-```{r}
-myfun(1, 2, 3)
-```
-
-一部の引数のみ指定がある場合では指定された引数だけがその通りに入力され、残りは順番通りに割り当てられるようです。
-
-```{r}
-myfun(def = 3, 4, 5)
-```
-
-ところでこの引数の指定は、一意に決まれば指定は省略することができます：
-
-```{r}
-myfun(d = 3, 4, 5)
-```
-
-一方、例えば以下のような呼び出しでは `g` から始まる引数が２つあるため一意に決まらず、エラーとなってしまいます。
-
-```{r}
-myfun2 <- function(abc, def, ghi, gjk) {
-    return(abc + 2*def + 3*ghi + 4*gjk)
-}
-myfun2(g = 3, 4, 5, 6)
-```
-
-では `match.call` を使って関数を呼び出すとどうなるかと言うと：
-
-```{r}
-match.call(myfun, call("myfun", 1, def = 3, ghi = 5))
-```
-
-この通り、各引数に対して何を割り当てたかを得ることができます。
-便利ですね。
-
-
-さらに続いて、 `nlambda` の指定です。
-ここでは $\lambda$ （罰則の大きさ）そのものではなく、検証する $\lambda$ の数（nubmer of lambda）を指定します（デフォルトは100）。
-
-```{r}
-## nlambda
-nlam = as.integer(nlambda)
-```
-
-ここからは `y` 、 `x` および `weight` のチェックです：
-
-```{r}
-## drop
-y = drop(y)
-
-## x
-### x は２列以上持つ必要があるので、単回帰はできない様子
-np = dim(x)
-if (is.null(np) | (np[2] <= 1)) 
-    stop("x should be a matrix with 2 or more columns")
-### x のレコード数
-nobs = as.integer(np[1])
-
-### weights
-### 未入力のときは 1 を与え、weights と nobs が一致しないときはエラー
-if (missing(weights)) 
-    weights = rep(1, nobs)
-else if (length(weights) != nobs) 
-    stop(paste("number of elements in weights (", length(weights), 
-        ") not equal to the number of rows of x (", nobs, 
-        ")", sep = ""))
-
-### 変数の数
-nvars = as.integer(np[2])
-
-## y
-dimy = dim(y)
-### y のレコード数 
-nrowy = ifelse(is.null(dimy), length(y), dimy[1])
-### y と x でレコード数が合わないときはエラー
-if (nrowy != nobs) 
-    stop(paste("number of observations in y (", nrowy, ") not equal to the number of rows of x (", 
-        nobs, ")", sep = ""))
-## 変数名
-vnames = colnames(x)
-if (is.null(vnames)) 
-    vnames = paste("V", seq(nvars), sep = "")
-```
-
-`y` に対する `drop` ですが、これは length が 1 であるような冗長な次元を落とす関数です。
-続いて `x` の行数が `weight` や `y` と合わない場合にエラーを返しています。
-
-以下ではモデルに含める変数や非ゼロとする変数などを指定します
-（ `nx(=pmax)` の方はちょっと理解がアヤシイので help の説明を書いておきます）：
-
-```{r}
-## 自由度
-### モデルに含まれる変数の上限を指定
-### dfmax = nvars + 1
-ne = as.integer(dfmax)
-
-### 非ゼロとする変数の数の上限(?)
-### Limit the maximum number of variables ever to be nonzero
-### pmax = min(dfmax * 2 + 20, nvars)
-nx = as.integer(pmax)
-
-### 除外対象となる変数の指定
-if (missing(exclude)) 
-    exclude = integer(0)
-```
-
-次に変数ごとに異なるペナルティを与えるために `penalty.factor` を指定します。
-この数値が `lambda` に乗じられるため、例えば特定の変数に対して `penalty.factor = 0` としておけば罰則を与えないようにすることが可能となります（結果として常にモデルに採用されるようになる）：
-
-```{r}
-## 変数ごとに異なるペナルティを与える
-### デフォルトは 1 が入る
-### Inf が指定されている変数は exclude として扱われる
-if (any(penalty.factor == Inf)) {
-    exclude = c(exclude, seq(nvars)[penalty.factor == Inf])
-    exclude = sort(unique(exclude))
-}
-if (length(exclude) > 0) {
-    jd = match(exclude, seq(nvars), 0)
-    if (!all(jd > 0)) 
-        stop("Some excluded variables out of range")
-    penalty.factor[jd] = 1
-    jd = as.integer(c(length(jd), jd))
-}
-else jd = as.integer(0)
-vp = as.double(penalty.factor)
-```
-
-これはせっかくなので実際にやってみましょう。
-冒頭のコードを持ってきて、以下のように `lambda` を適当に設定してみます。
-
-```{r}
-x <- scale(LifeCycleSavings[, 2:5])
-y <- LifeCycleSavings[, 1] - mean(LifeCycleSavings[, 1])
-
-coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3))
-```
-
-このとき、2・3番目の変数である `pop75` と `dpi` は 0 と推定されてしまいました。
-ここでこれらの変数の `penalty.factor` を 0 とすると
-
-```{r}
-coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3,
-            penalty.factor = c(1, 0, 0, 1)))
-```
-
-ちゃんと推定されるようになっています。
-逆に `pop15` の `penalty.factor` を大きくすると
-
-```{r}
-coef(glmnet(x, y, family = "gaussian", alpha = 1, lambda = 0.3,
-            penalty.factor = c(2, 0, 0, 1)))
-```
-
-このようにモデルから除外されることになります。
-さらに `penalty.factor = Inf` とすると、その変数は `exclude` として扱われるようになります。
-
-続いて `glmnet.control` で持っているパラメータを渡します。
-
-```{r}
-## 内部でデフォルトで持っているパラメータ 
-internal.parms = glmnet.control()
-### プログレスバーを表示する！
-if (internal.parms$itrace) 
-    trace.it = 1
-else {
-    if (trace.it) {
-        glmnet.control(itrace = 1)
-        on.exit(glmnet.control(itrace = 0))
+> glmnet:::jerr
+function (n, maxit, pmax, family) 
+{
+    if (n == 0) 
+        list(n = 0, fatal = FALSE, msg = "")
+    else {
+        errlist = switch(family, gaussian = jerr.elnet(n, maxit, 
+            pmax), binomial = jerr.lognet(n, maxit, pmax), multinomial = jerr.lognet(n, 
+            maxit, pmax), poisson = jerr.fishnet(n, maxit, pmax), 
+            cox = jerr.coxnet(n, maxit, pmax), mrelnet = jerr.mrelnet(n, 
+                maxit, pmax))
+        names(errlist) = c("n", "fatal", "msg")
+        errlist$msg = paste("from glmnet Fortran code (error code ", 
+            n, "); ", errlist$msg, sep = "")
+        errlist
     }
 }
 ```
 
-次に、回帰係数に対する上限・下限を設定します。
-なお下限は non-positive 、上限は non-negative しか設定できないようですね。
+として定義されており、`errlist` は `switch(family, ~)` で決まっています。
+そのためここでは `jerr.elnet` を確認すると
 
 ```{r}
-## 上限・下限
-### lower.limit としては非正の値のみ指定できる
-if (any(lower.limits > 0)) {
-    stop("Lower limits should be non-positive")
-}
-### upper.limtit は逆に非負の値のみ指定できる
-if (any(upper.limits < 0)) {
-    stop("Upper limits should be non-negative")
-}
-### Inf （デフォルト）になっているものについては特定の値(9.9e35)に差し替え  
-lower.limits[lower.limits == -Inf] = -internal.parms$big
-upper.limits[upper.limits == Inf] = internal.parms$big
-
-### nvars との整合性チェック
-if (length(lower.limits) < nvars) {
-    ### lower.limits としてスカラが指定されている場合は nvars 全てに適用
-    if (length(lower.limits) == 1) 
-        lower.limits = rep(lower.limits, nvars)
-    else stop("Require length 1 or nvars lower.limits")
-}
-### lower.limits が nvars よりも長い場合は前から利用する
-else lower.limits = lower.limits[seq(nvars)]
-### nvars との整合性チェック（lower.limits と同様）
-if (length(upper.limits) < nvars) {
-    if (length(upper.limits) == 1) 
-        upper.limits = rep(upper.limits, nvars)
-    else stop("Require length 1 or nvars upper.limits")
-}
-else upper.limits = upper.limits[seq(nvars)]
-### 上限・下限
-### coefficient limit？
-cl = rbind(lower.limits, upper.limits)
-
-### lower または upper に 0 を含む場合
-### 0除算が発生するときのエラー対策？
-if (any(cl == 0)) {
-    ### fdev は最小となるデビアンスの変化量(割合)
-    ### minimum fractional change in deviance for stopping path; factory default = 1.0e5
-    fdev = glmnet.control()$fdev
-    if (fdev != 0) {
-        glmnet.control(fdev = 0)
-        on.exit(glmnet.control(fdev = fdev)) # 関数終了時に実行される処理
+> glmnet:::jerr.elnet
+function (n, maxit, pmax) 
+{
+    if (n > 0) {
+        if (n < 7777) 
+            msg = "Memory allocation error; contact package maintainer"
+        else if (n == 7777) 
+            msg = "All used predictors have zero variance"
+        else if (n == 10000) 
+            msg = "All penalty factors are <= 0"
+        else msg = "Unknown error"
+        list(n = n, fatal = TRUE, msg = msg)
+    }
+    else if (n < 0) {
+        if (n > -10000) 
+            msg = paste("Convergence for ", -n, "th lambda value not reached after maxit=", 
+                maxit, " iterations; solutions for larger lambdas returned", 
+                sep = "")
+        if (n < -10000) 
+            msg = paste("Number of nonzero coefficients along the path exceeds pmax=", 
+                pmax, " at ", -n - 10000, "th lambda value; solutions for larger lambdas returned", 
+                sep = "")
+        list(n = n, fatal = FALSE, msg = msg)
     }
 }
-storage.mode(cl) = "double"
 ```
 
-標準化と切片に対する指定です。
-標準化の処理そのものは以降の関数の内部で実行されるため、ここでは指定のみを行います。
+`else if (n == 10000) msg = "All penalty factors are <= 0"` と、罰則項が 0 であることを教えてくれていますね。
 
-```{r}
-## 標準化
-### standardize と intercept はデフォルトは TRUE なので 1 になる
-isd = as.integer(standardize)
-intr = as.integer(intercept)
-### Cox回帰における警告
-if (!missing(intercept) && family == "cox") 
-    warning("Cox model has no intercept")
-### standardize.response は family="mgaussian" のときに目的変数を標準化するかの指定
-jsd = as.integer(standardize.response)
-```
+続いて `elnetu` の呼びだしを確認すると、`elnetu` と `elnetn` のいずれを呼ぶかは `ka` で決まっています。
+この `ka` は `ka = as.integer(switch(type.gaussian, covariance = 1, naive = 2, ))` で定義されています。
+また `type.gaussian` は glmnet の引数であり、`type.gaussian = ifelse(nvars < 500, "covariance", "naive")` と定義されています。
+変数の数が 500 未満であれば covarinace となり、 `ka` には 1 が引き渡されるので `if(ka .ne. 1)` には該当せず、したがって `elnetu` が呼ばれることになるようですね。
 
-収束を判定する閾値を指定します。
 
-```{r}
-## 収束判定
-### coordinate descent における収束の閾値
-thresh = as.double(thresh)
-```
-
-次に、 `lambda` に関する指定となりますが、 `flmin` および `ulam` の使われ方がよく理解できなかったため、これらの説明は省略します。
-なお help にもありますが、通常は `lambda` には単一の値ではなく、候補となる値のベクトルを与えます。
-
- > Avoid supplying a single value for lambda (for predictions after CV use predict() instead).
-
-```{r}
-## lambda
-### ペナルティの大きさ
-### 指定がない場合、flmin と ulam は lambda.min.ratio および 1 に指定される
-### lambda.min.ratio = ifelse(nobs < nvars, 0.01, 1e-04)
-if (is.null(lambda)) {
-    if (lambda.min.ratio >= 1) 
-        stop("lambda.min.ratio should be less than 1")
-    flmin = as.double(lambda.min.ratio)
-    ulam = double(1)
-}
-### 指定がある場合、flmin(下限？)とulam(上限？)は 1 および lambdaの降順 に指定される
-else {
-    flmin = as.double(1)
-    if (any(lambda < 0)) 
-        stop("lambdas should be non-negative")
-    ulam = as.double(rev(sort(lambda)))
-    nlam = as.integer(length(lambda))
-}
-```
-
-次に疎行列の指定です。
-入力 `X` が疎行列である場合、`dgCMatrix` 形式に変換されます。
-ここで `dgCMatrix` とは列方向の志向性を持つ疎行列の形式です。
-
-```{r}
-## sparse matrix 
-### x が Matrix::sparseMatrix の場合は Matrix::dgCMatrix に変換する
-### dgCMatrix: csc順に並び替えて(csc形式)の疎行列圧縮保管
-is.sparse = FALSE
-ix = jx = NULL
-if (inherits(x, "sparseMatrix")) {
-    is.sparse = TRUE
-    x = as(x, "CsparseMatrix")
-    x = as(x, "dgCMatrix")
-    ### x@p は各列の非ゼロの値の個数を積み上げたものが格納されている（列数 + 1）
-    ### diff(x@p + 1) すれば各列の非ゼロの値の個数がわかる
-    ix = as.integer(x@p + 1)
-    ### x@i は各列の非ゼロの値の行番号が格納されている（なので length(x@i) が非ゼロの値の個数と一致する）
-    ### 0-index なので R のスタイルと合わせるために +1 しているのでしょう
-    jx = as.integer(x@i + 1)
-    ### x@x は非ゼロである値そのもののベクトル
-    x = as.double(x@x)
-}
-```
-
-ここも、せっかくなので疎行列における数値の格納方法についても見ておきましょう。
-以下のように疎行列を作成します：
-
-```{r}
-## library(Matrix)
-set.seed(1234)
-i <- c(1, 5, 18)
-j <- c(4, 13, 19)
-n <- rnorm(3)
-
-m <- matrix(0, 20, 20)
-for (k in 1:length(n)) {
-  m[i[k], j[k]] <- n[k]
-}
-
-s_m <- as(m, "dgCMatrix")
-# for (k in 1:20) {
-#   dimnames(s_m)[[2]][i] <- paste(rep(letters[i], 3), collapse = "")
-# }
-```
-
-ここで `s_m` は行列 `m` を疎行列として扱ったものです。
-`str()` で確認すると、 `s_m` には
- - `@ i` ：非ゼロの要素の入っていた行番号( 0-index であることに注意)
- - `@ p` ：各列における非ゼロの要素の個数を積み上げたもの
- - `@ Dim` ：行列の次元
- - `@ Dimnames` ：行列の各次元の名前
- - `@ x` ：非ゼロの要素の数値
- - `@ factors` ：（これはちょっとわかりませんでした）
-が格納されています。
-
-```{r}
-str(s_m)
-```
-
-ここで `@ i` には非ゼロである各要素の行番号が入るため行列 `m` を作ったときの行番号の指定 `i` に対応しますが、0-index であるため数字は1つずつ小さくなっています。
-
-```{r}
-print(i- 1)
-print(s_m@i)
-```
-
-ちょっとわかりにくいのが `@ p` で、ここには各列における非ゼロの要素の個数の累積が格納され、列数に対応します（ただし最初に 0 が追加されるため、列数 + 1 の長さになります）。
-今回の例では行列の列数が 20 なので、length が 21 となります。
-
-```{r}
-length(s_m@p)
-```
-
-このベクトルには非ゼロの要素の個数の累積が入っているため、差分を取ると元の行列で非ゼロの要素が入っていた列を得ることができます。
-
-```{r}
-diff(s_m@p)
-```
-
-列番号を指定した `j` と比較してみましょう：
-
-```{r}
-which(diff(s_m@p) == 1)
-j
-```
-
-下記の処理では`ix` には各列における非ゼロの要素の累積個数(+1)、 `jx` には行番号を代入しています。
-また `x` には元の疎行列における非ゼロの要素の値そのものをベクトルとして入力しており、説明変数の行列が疎行列であった場合、この時点で行列ではなくベクトルとして扱われることになります。
-
-次に、プログレスバーの指定です（出せるんですね）。
-
-```{r}
-## プログレスバー
-if (trace.it) {
-    if (relax) 
-        cat("Training Fit\n")
-    pb <- createPB(min = 0, max = nlam, initial = 0, style = 3)
-}
-```
-
-そして最後に最適化の手法についての指定です。
-`family` が ``binomial` または `multinomial` の場合、 `glmnet` の引数である `type.logistic` および `type.multinomial` が評価され、（後の工程で）それに応じて最適化のエンジンが変わります。
-具体的には `lognet2m` 、 `lognetn` および `multlognetn` のどれが選ばれるかが決まります。
-これは別の機会に解説します（予定です）。
-
-```{r}
-## 最適化の手法（ロジスティックおよび多項ロジスティックの時）
-### type.logistic = c("Newton", "modified.Newton")
-### Newton を指定なら 0、modified.Newton を指定なら 1 を返す
-### If "Newton" then the exact hessian is used (default), while "modified.Newton" uses an upper-bound on the hessian, and can be faster.
-kopt = switch(match.arg(type.logistic), Newton = 0, modified.Newton = 1)
-### type.multinomial = c("ungrouped", "grouped")
-### 多項ロジスティックで更にgroupedの場合は kopt は 2 となる
-### If "grouped" then a grouped lasso penalty is used on the multinomial coefficients for a variable. This ensures they are all in our out together. 
-### The default is "ungrouped"
-if (family == "multinomial") {
-    type.multinomial = match.arg(type.multinomial)
-    if (type.multinomial == "grouped") 
-        kopt = 2
-}
-kopt = as.integer(kopt)
-```
-
-最初の方で `family` のチェックに使われ、ここでも使われている `match.arg` ですが、せっかくなので挙動を確認しておきましょう：
-
-```{r}
-### 引数に type.logistic を持つ関数を定義
-myfun <- function(a = "aaa", type.logistic = c("Newton", "modified.Newton")) {
-  ### 呼び出し元の関数の引数をチェックし、 Newton なら 0、modified.Newton なら 1を割り当てる
-  kopt <- switch(match.arg(type.logistic), Newton = 0, modified.Newton = 1)
-  kopt
-}
-```
-
-上のような関数を定義し、以下のように呼び出すと、結果はそれぞれ 0, 0, 1 となります。
-
-```{r}
-myfun()
-myfun(type.logistic = "Newton")
-myfun(type.logistic = "modified.Newton")
-
+```{fortran}
+      ! elnetu か elnetn のどちらを呼ぶかは ka .ne. 1 であるかで判断している
+      ! 1 でなければ elnetn 、 1 なら elnetu
+      ! ka は elnet の第一引数
+      ! ka = as.integer(switch(type.gaussian, covariance = 1, naive = 2, ))
+      ! ということなので、 type.gaussian を指定している
+      if(ka .ne. 1)goto 10041                                           
+      call elnetu  (parm,no,ni,x,y,w,jd,vq,cl,ne,nx,nlam,flmin,ulam,thr,
+     *isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+      goto 10051                                                        
+10041 continue                                                          
+      call elnetn (parm,no,ni,x,y,w,jd,vq,cl,ne,nx,nlam,flmin,ulam,thr,i
+     *sd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
 ```
 
 
-
-#### 2. フィッティング
-以上でパラメータの設定や前処理が終わりましたので次はフィッティングです。
-といってもここでは `family` に応じて呼び出す関数を変えているだけなので、詳細は一旦スキップしましょう。
-
-```{r}
-# フィッティング
-## family に応じてその後に呼び出す関数を変える
-fit = switch(family,
-                ### gaussian のときは elnet 
-                gaussian = elnet(x, is.sparse, ix, jx, 
-    y, weights, offset, type.gaussian, alpha, nobs, nvars, 
-    jd, vp, cl, ne, nx, nlam, flmin, ulam, thresh, isd, intr, 
-    vnames, maxit), 
-                ### poisson のときは fishnet
-                poisson = fishnet(x, is.sparse, ix, jx, 
-    y, weights, offset, alpha, nobs, nvars, jd, vp, cl, ne, 
-    nx, nlam, flmin, ulam, thresh, isd, intr, vnames, maxit),
-                ### binomial のときは lognet
-                binomial = lognet(x, is.sparse, ix, jx, y, weights, offset, 
-        alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, flmin, 
-        ulam, thresh, isd, intr, vnames, maxit, kopt, family), 
-                ### multinomial のときも lognet
-                multinomial = lognet(x, is.sparse, ix, jx, y, weights, 
-        offset, alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, 
-        flmin, ulam, thresh, isd, intr, vnames, maxit, kopt, 
-        family), 
-                ### cox のときは coxnet
-                cox = coxnet(x, is.sparse, ix, jx, y, weights, 
-        offset, alpha, nobs, nvars, jd, vp, cl, ne, nx, nlam, 
-        flmin, ulam, thresh, isd, vnames, maxit), 
-                ### mgaussian のときは mrelnet
-                mgaussian = mrelnet(x, 
-        is.sparse, ix, jx, y, weights, offset, alpha, nobs, 
-        nvars, jd, vp, cl, ne, nx, nlam, flmin, ulam, thresh, 
-        isd, jsd, intr, vnames, maxit))
-## プログレスバー
-if (trace.it) {
-    utils::setTxtProgressBar(pb, nlam)
-    close(pb)
-}
-```
-
-
-なおここでそれぞれの関数に渡されている引数を比較すると以下のようになります（一部はよくわかりませんでした）：
-
-| 引数 | 説明 | elnet | fishnet | lognet | coxnet | mrelnet |
-|------|------|-------|---------|--------|--------|---------|
-| x | 説明変数の行列 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| is.sparse | 疎行列であるかの指定 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| ix |  | 〇 | 〇 | 〇 | 〇 | 〇 |
-| jx | 疎行列における非ゼロの要素の行番号 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| y | 目的変数の行列 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| weights | 観測値に対する重み | 〇 | 〇 | 〇 | 〇 | 〇 |
-| offset | オフセット | 〇 | 〇 | 〇 | 〇 | 〇 |
-| type.gaussian | 1:covariance, 2:naïve | 〇 | - | - | - | - |
-| alpha | L1とL2に対する重みの調整パラメータ | 〇 | 〇 | 〇 | 〇 | 〇 |
-| nobs | レコード数 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| nvars | 説明変数の数 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| jd |  | 〇 | 〇 | 〇 | 〇 | 〇 |
-| vp | 各変数に対する罰則の重み（penalty.factor） | 〇 | 〇 | 〇 | 〇 | 〇 |
-| cl |  | 〇 | 〇 | 〇 | 〇 | 〇 |
-| ne | モデルに含まれる変数の上限。ne = dfmax = nvars + 1 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| nx |  | 〇 | 〇 | 〇 | 〇 | 〇 |
-| nlam | lambdaの数 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| flmin | ? | 〇 | 〇 | 〇 | 〇 | 〇 |
-| ulam | ? | 〇 | 〇 | 〇 | 〇 | 〇 |
-| thresh | 収束判定の閾値 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| isd | standardizeするかの指定 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| jsd |  | - | - | - | - | 〇 |
-| intr | 切片（Intercept）を含めるかの指定 | 〇 | 〇 | 〇 | - | 〇 |
-| vnames | 変数名 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| maxit | 反復回数の上限 | 〇 | 〇 | 〇 | 〇 | 〇 |
-| kopt | 最適化の手法 | - | - | 〇 | - | - |
-| family | family | - | - | 〇 | - | - |
-
-
-#### 3. 後処理
-最後に後処理です。
-
-```{r}
-# 後処理
-## lambda が指定されておらず fit$lambda が 3 パターン以上検証されている場合、先頭を差し替える
-## glmnet::fix.lam
-## function (lam) {
-## if (length(lam) > 2) {
-##     llam = log(lam)
-##     lam[1] = exp(2 * llam[2] - llam[3])
-## }
-## lam
-## }
-if (is.null(lambda)) 
-    fit$lambda = fix.lam(fit$lambda)
-## call
-fit$call = this.call
-## レコード数
-fit$nobs = nobs
-## class に glmnet を追加
-class(fit) = c(class(fit), "glmnet")
-
-# リターン
-## relax が TRUE の場合、解パスの各セットについて罰則なしでモデルをフィッティングする   
-## If TRUE then for each active set in the path of solutions, the model is refit without any regularization. See details for more information. 
-## This argument is new, and users may experience convergence issues with small datasets, especially with non-gaussian families. 
-## Limiting the value of ’maxp’ can alleviate these issues in some cases.
-if (relax) 
-    relax.glmnet(fit, x = x, y = y, weights = weights, offset = offset, 
-        lower.limits = lower.limits, upper.limits = upper.limits, 
-        check.args = FALSE, ...)
-else fit
-```
-
-この後処理で目立つ工程としては `relax` の部分でしょう。
-ここで `relax` は help によると、
-
-> If relax=TRUE a duplicate sequence of models is produced, where each active set in the elastic-net path is refit without regularization. The result of this is a matching "glmnet" object which is stored on the original object in a component named "relaxed", and is part of the glmnet output. 
-
-ということで、`glmnet` によって変数選択された結果を用いて、罰則なしで再度フィッティングを行うオプションのようです。
-これも実際にやってみるのが早いと思いますので、以下のように実行してみます：
-
-```{r}
-lasso_02 <- glmnet(x, y, family = "gaussian", relax = T)
-```
-
-すると、先程の結果（ `lasso` ）に、 `lasso_02$relaxed` という結果が追加されていることがわかりますが、内容は `lasso` とほとんど同じです。
-
-```{r}
-str(lasso)
-str(lasso_02$relaxed)
-```
-
-ここで `lasso_02$relaxed` の中身を少し見てみると、例えば `beta` には以下のような数値が入っています。
-
-```{r}
-lasso_02$relaxed$beta[, 1:6]
-```
-
-これは何かと言うと、少しずつ罰則の重みを変えたことで変数が選択された状態で通常の線形回帰を当てはめたときの回帰係数となっています。
-例えば `lasso_02$relaxed$beta[, 6]` には、変数として選択された `pop15` と `ddpi` それぞれの回帰係数が入っています。
-実際に `lm` の結果と一致するか見てみましょう：
-
-```{r}
-coef(lm(y ~ x[, c(1, 4)]))
-```
-
-合っていますね。
-ところで切片の推定値が入っている `lasso_02$relaxed$a0` の値は少し異なるようです：
-
-```{r}
-lasso_02$relaxed$a0[6]
-```
-
-もしかしたら標準化の違いかとも思いましたがそれでもないようで、この理由はわかりませんでした。
-
-```{r}
-lasso_03 <- glmnet(x, y, family = "gaussian", relax = T, standardize = F)
-lasso_03$relaxed$a0[6]
-```
-
-`glmnet()` の実装は以上となります。
-次回はフィッティングの部分で呼ばれている `elnet` を詳しく見ていきましょう。
-なお `gam` のときとは違い、 `glmnet` では library をインストールしてもソースコードは付いてきませんでしたので、[こちら](https://tutel.me/c/programming/questions/33533045/how+can+i+see+the+source+code+of+fortran+in+r)を参考に fortran のソースコードを取得しました。
+次回はこの `elnetu` を見てみましょう。
