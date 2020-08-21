@@ -1,5 +1,4 @@
-      subroutine elnetu(parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,ula
-     *m,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+      subroutine elnetu(parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,ulam,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
       implicit double precision(a-h,o-z)                                
       double precision x(no,ni),y(no),w(no),vp(ni),ulam(nlam),cl(2,ni)  
       double precision ca(nx,nlam),a0(nlam),rsq(nlam),alm(nlam)         
@@ -14,7 +13,7 @@
       if(jerr.ne.0) return                                              
       allocate(ju(1:ni),stat=jerr) ! ju は変数の数だけの次元をもつベクトル                                     
       if(jerr.ne.0) return                                              
-      allocate(xv(1:ni),stat=jerr)                                      
+      allocate(xv(1:ni),stat=jerr) ! xv は変数の数だけの次元を持つベクトル                                     
       if(jerr.ne.0) return                                              
       allocate(vlam(1:nlam),stat=jerr)                                  
       if(jerr.ne.0) return
@@ -65,12 +64,12 @@
 
       ! 3. フィッティング
       ! 本体である elnet1 の呼び出し
-      call elnet1(parm,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,vlam,thr,maxi
-     *t,xv,  lmu,ca,ia,nin,rsq,alm,nlp,jerr)
+      call elnet1(parm,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,vlam,thr,maxi,xv,  lmu,ca,ia,nin,rsq,alm,nlp,jerr)
 
       ! jerr が 0 でなければ return
       if(jerr.gt.0) return
 
+      ! 4. 後処理
       ! lmu はデフォルトで 1 
       ! lmu = integer(1)                                             
       do 10111 k=1,lmu
@@ -81,7 +80,8 @@
       
       ! nin は nlambda（ただし integer）
       ! nin = integer(nlam)
-      nk=nin(k)                                                         
+      nk=nin(k)
+
       do 10121 l=1,nk                                                   
       ! 回帰係数に y の重み調整済み標準偏差を乗じ、説明変数の重み調整済み標準偏差で除す
       ! ここで lambda の個数だけ係数が格納されている
@@ -90,12 +90,14 @@
       ! v は sqrt(w)
       ! w は w = w/sum(w)
       ca(l,k)=ys*ca(l,k)/xs(ia(l))                                      
-10121 continue                                                          
+10121 continue
+
       continue
       ! a0 は elnet.r で以下のように定義： a0 = double(nlam)                                                          
       a0(k)=0.0                                                         
       if(intr.ne.0) a0(k)=ym-dot_product(ca(1:nk,k),xm(ia(1:nk))) ! y の重み付き平均 - y_hat の平均   
-10111 continue                                                          
+10111 continue
+
       continue                                                          
       deallocate(xm,xs,g,ju,xv,vlam)                                    
       return                                                            
