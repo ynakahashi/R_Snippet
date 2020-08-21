@@ -17,7 +17,7 @@
       ! a, mm, da を allocate
       allocate(a(1:ni),stat=jerr)  ! a は説明変数の数の次元をもつベクトル                                     
       if(jerr.ne.0) return                                              
-      allocate(mm(1:ni),stat=jerr)                                      
+      allocate(mm(1:ni),stat=jerr) ! mm は説明変数の数の次元をもつベクトル                                     
       if(jerr.ne.0) return                                              
       allocate(da(1:ni),stat=jerr)                                      
       if(jerr.ne.0) return                                              
@@ -63,6 +63,7 @@
       alm=0.0     ! ループの２回目は alm を いったん 0 にする                                                      
       
       ! ２番目のループ
+      ! alm の更新
       do 10341 j=1,ni  ! ni は変数の数                                                 
       if(ju(j).eq.0)goto 10341  ! ju は 各変数列において全く同じ値が入っていないかを確認したもの（chkvars で行われる）で、全く同じなら 0 となりスキップされる                                   
       if(vp(j).le.0.0)goto 10341   ! vp は各変数に対する罰則の重み（デフォルトは 1） が入ったベクトル（vp = as.double(penalty.factor) in glmnet.r）                                     
@@ -83,7 +84,8 @@
       nlp=nlp+1  ! nlp は 0 だったので一番外側のループ（lambda）のカウンタになってる？                                                      
       dlx=0.0                                                           
       
-      ! 少し大きめのループ
+      ! ３番目のループは本体
+      ! ここで回帰係数を推定している
       ! ３番目のループは ni なので説明変数。k をインデックスとして各説明変数をさらう。
       do 10371 k=1,ni                                                   
       if(ju(k).eq.0)goto 10371 
@@ -119,11 +121,12 @@
       ! a(k) が ak と同じなら（このループで更新がなければ）ループを抜けて次の変数へ
       if(a(k).eq.ak)goto 10371                                          
       ! mm は lambda ループの１回目では 0 なので１回目だけ処理を行う？                                        
-      if(mm(k) .ne. 0)goto 10391 ! 10391 は３番目のループの先なので、 mm が 0 でなければ ３番目のループをスキップ
+      if(mm(k) .ne. 0)goto 10391 ! 10391 は４番目のループの先なので、 mm が 0 でなければ ４番目のループをスキップ
       nin=nin+1  ! mm(k) が 0 なら nin を +1 する。 おそらく、パラメータが 0 でないときに mm は 0 となる。                                                      
-      if(nin.gt.nx)goto 10372 ! nx は非ゼロとする変数の上限なので、推定したパラメータ数がそれを越えると２番目のループを抜ける
+      if(nin.gt.nx)goto 10372 ! nx は非ゼロとする変数の上限なので、推定したパラメータ数がそれを越えると３番目のループを抜ける
       
       ! ４番目のループ
+      ! 分散共分散行列のようなものを作っている
       ! ここでもループの対象は説明変数（ただしインデックスは k ではなく j）
       do 10401 j=1,ni                                                   
       ! バラツキがなければ以降の処理をスキップ                                          
@@ -177,56 +180,69 @@
       continue                                                          
 10481 continue                                                          
       nlp=nlp+1                                                         
-      dlx=0.0                                                           
+      dlx=0.0
+
+      ! ６番目のループ
+      ! ３番目のループと同じことを ni ではなく nin に対して再度実行                                                           
       do 10491 l=1,nin                                                  
-      k=ia(l)                                                           
-      ak=a(k)                                                           
+      k=ia(l) ! k を取り出す（ ia には 0 ではないパラメータが推定された変数の列が格納されてる）                                                         
+      ak=a(k) ! a を取り出す                                                            
       u=g(k)+ak*xv(k)                                                   
       v=abs(u)-vp(k)*ab                                                 
       a(k)=0.0                                                          
-      if(v.gt.0.0) a(k)=max(cl(1,k),min(cl(2,k),sign(v,u)/(xv(k)+vp(k)*d
-     *em)))
+      if(v.gt.0.0) a(k)=max(cl(1,k),min(cl(2,k),sign(v,u)/(xv(k)+vp(k)*dem)))
       if(a(k).eq.ak)goto 10491                                          
       del=a(k)-ak                                                       
       rsq=rsq+del*(2.0*g(k)-del*xv(k))                                  
-      dlx=max(xv(k)*del**2,dlx)                                         
+      dlx=max(xv(k)*del**2,dlx)
+
+      ! ７番目のループ
+      ! 上と同様、 nin に対して g を更新                                         
       do 10501 j=1,nin                                                  
       g(ia(j))=g(ia(j))-c(ia(j),mm(k))*del                              
-10501 continue                                                          
+10501 continue ! ７番目のループここまで
+
       continue                                                          
-10491 continue                                                          
+10491 continue ! ６番目のループここまで
+
       continue                                                          
       if(dlx.lt.thr)goto 10482                                          
       if(nlp .le. maxit)goto 10521                                      
       jerr=-m                                                           
       return                                                            
 10521 continue                                                          
-      goto 10481                                                        
+      goto 10481  ! えっ！！！                                                      
 10482 continue                                                          
       da(1:nin)=a(ia(1:nin))-da(1:nin)                                  
+      
+      ! ８番目のループ
       do 10531 j=1,ni                                                   
       if(mm(j).ne.0)goto 10531                                          
       if(ju(j).ne.0) g(j)=g(j)-dot_product(da(1:nin),c(j,1:nin))        
-10531 continue                                                          
+10531 continue ! ８番目のループここまで
+                                                         
       continue                                                          
       jz=0                                                              
-      goto 10351                                                        
+      goto 10351  ! えっ！！ ３番目のループの開始まで戻すの！                                                     
 10352 continue                                                          
       if(nin .le. nx)goto 10551  ! nin が nx を超えた場合はここにくる                                       
       jerr=-10000-m                                                     
       goto 10282 ! jerr を 更新して elnet1 を抜ける                                                      
 10551 continue                                                          
       if(nin.gt.0) ao(1:nin,m)=a(ia(1:nin))                             
-      kin(m)=nin                                                        
+      kin(m)=nin   ! m 回目のループの nin を kin[m] に格納する                                                     
       rsqo(m)=rsq  ! m 回目のループの rsq を rsqo[m] に格納する                                                     
-      almo(m)=alm                                                       
+      almo(m)=alm  ! m 回目のループの alm を almo[m] に格納する                                                     
       lmu=m                                                             
       if(m.lt.mnl)goto 10281                                            
       if(flmin.ge.1.0)goto 10281                                        
-      me=0                                                              
+      me=0 
+
+      ! ９番目のループ                                                             
       do 10561 j=1,nin                                                  
       if(ao(j,m).ne.0.0) me=me+1                                        
-10561 continue                                                          
+10561 continue ! ９番目のループここまで 
+
       continue                                                          
       if(me.gt.ne)goto 10282                                            
       if(rsq-rsq0.lt.sml*rsq)goto 10282                                 
