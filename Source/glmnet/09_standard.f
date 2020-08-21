@@ -5,7 +5,7 @@
       double precision, dimension (:), allocatable :: v                 
       allocate(v(1:no),stat=jerr)                                       
       if(jerr.ne.0) return                                              
-      w=w/sum(w)  ! ここで重みを 重みの総和あたりの重みに変換している。これに観測値を掛け合わせて和をとると重み付き平均になる。                                                      
+      w=w/sum(w)  ! ここで重みを 重みの総和あたりの重みに変換している。                                                      
       v=sqrt(w)  ! 二乗和を求めるときに各観測値の重みを二乗することになるため、事前に平方根を取っておくのだと思う（平方和に対して重みを乗じるイメージ）  
       
       ! intr は intercept なので切片が 0 であるかで判定
@@ -76,7 +76,7 @@
       ys=sqrt(dot_product(y,y)) ! 二乗和（分散）の平方根（SD）                                        
       y=y/ys ! 標準化
 
-      ! 切片が 0 の場合はここまで飛んでくる                                                            
+      ! 切片の有無それぞれについてのケースがここで合流                                                            
 10191 continue                                                          
       continue                                                          
       g=0.0                                                             
