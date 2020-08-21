@@ -1,0 +1,22 @@
+---
+title: "glmnetをもう少し理解したい③"
+output: html_document
+---
+
+前回の記事では R の関数 `elnet` の中で `elnet` という Fortran のサブルーチンが呼ばれ、さらに `type.gaussian` の値（ `covariance` と `naive` ）によって `elnetu` と `elnetn` のいずれかが呼ばれるところまで確認しました。
+今回は `elnetu` の中身を見ていきます。
+過去の記事はこちらです。
+
+前回の記事のリンク
+前々回の記事のリンク
+
+[:contents]
+
+### `elnetu` の実装
+
+
+```{fortran}
+                                                        
+
+```
+
