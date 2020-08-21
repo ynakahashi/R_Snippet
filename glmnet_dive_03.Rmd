@@ -13,10 +13,368 @@ output: html_document
 [:contents]
 
 ### `elnetu` の実装
+それでは早速 `elnetu` を見ていきましょう。 `elnetu` は `elnet` と同様にそれほど大きくないのでいきなり内容の確認に入りますが、処理としては以下の手順になっているようです：
+
+1. 前処理
+2. 標準化
+3. フィッティング
+4. 後処理
+
+まずは前処理ですが、メモリの割り付けのあとに `chkvars` というサブルーチンを呼び出しています。
+```{fortran}
+      subroutine elnetu(parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,ulam,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+      implicit double precision(a-h,o-z)                                
+      double precision x(no,ni),y(no),w(no),vp(ni),ulam(nlam),cl(2,ni)  
+      double precision ca(nx,nlam),a0(nlam),rsq(nlam),alm(nlam)         
+      integer jd(*),ia(nx),nin(nlam)                                    
+      double precision, dimension (:), allocatable :: xm,xs,g,xv,vlam   
+      integer, dimension (:), allocatable :: ju                         
+      allocate(g(1:ni),stat=jerr)  ! g は変数の数を次元にもつベクトル                                     
+      if(jerr.ne.0) return                                              
+      allocate(xm(1:ni),stat=jerr)                                      
+      if(jerr.ne.0) return                                              
+      allocate(xs(1:ni),stat=jerr)                                      
+      if(jerr.ne.0) return                                              
+      allocate(ju(1:ni),stat=jerr)                                     
+      if(jerr.ne.0) return                                              
+      allocate(xv(1:ni),stat=jerr)                                    
+      if(jerr.ne.0) return                                              
+      allocate(vlam(1:nlam),stat=jerr)                                  
+      if(jerr.ne.0) return
+
+      ! 1. 前処理
+      call chkvars(no,ni,x,ju)
+
+      if(jd(1).gt.0) ju(jd(2:(jd(1)+1)))=0
+      if(maxval(ju) .gt. 0)goto 10071                                   
+      jerr=7777                                                         
+      return                                                            
+10071 continue
+```
+
+この `chkvars` では x の各変数について一行目の値と異なる値が二行目以降にあるかを確認し、 `ju` に格納しています。
+異なる値がなければ全ての値は同じということになりますので、例えば回帰係数を推定する意味はありません。
+先の処理ではこの `ju` を参照してスキップするかを決めている箇所が多々出てきます。
+
+```{fortran}
+      subroutine chkvars(no,ni,x,ju)
+      implicit double precision(a-h,o-z)
+      double precision x(no,ni)
+      integer ju(ni)
+      
+      ! ここから各変数のチェックを開始
+      do 11061 j=1,ni
+      ju(j)=0
+      t=x(1,j) ! 1行目の値を取得
+
+      ! ここから2行目の値を確認する
+      do 11071 i=2,no
+      ! t は x(1, j) なので、各変数 j について 1 行目の値と等しいかを確認している
+      if(x(i,j).eq.t) goto 11071 ! 等しければ次の行へ
+      ju(j)=1 ! 等しくない数値があれば ju を 1 にして次の変数へ
+      goto 11072
+11071 continue
+11072 continue
+11061 continue
+      continue
+      return
+      end
+```
+
+続いて `standard` というサブルーチンを呼び出して標準化を行います。
+
+```{fortran}      
+      ! 2. 標準化
+      call standard(no,ni,x,y,w,isd,intr,ju,g,xm,xs,ym,ys,xv,jerr)
+```
+
+この `standard` とうサブルーチンは結構大きく見えますが、切片の有無で処理を分けているため重複部分があります。
+処理の内容としては：
+
+1. 重みの変換
+2. y と x の更新
+3. y と x の内積（共分散）を計算
+
+となっています。
+まずは重みの変換を確認してみると、重み `w` を「重みの総和あたりの重み」に変換し、
+さらにその平方根をとったものを `v` として定義しています。
+またその次から、先に述べたように切片の有無によって処理を分けています。
+
+```{fortran}
+      subroutine standard(no,ni,x,y,w,isd,intr,ju,g,xm,xs,ym,ys,xv,jerr)
+      implicit double precision(a-h,o-z)                                
+      double precision x(no,ni),y(no),w(no),g(ni),xm(ni),xs(ni),xv(ni)  
+      integer ju(ni)                                                    
+      double precision, dimension (:), allocatable :: v                 
+      allocate(v(1:no),stat=jerr)                                       
+      if(jerr.ne.0) return
+      
+      ! 1. 重みの変換
+      w=w/sum(w)
+      v=sqrt(w) 
+
+      ! intr は intercept なので切片が 0 であるかで判定
+      ! 切片が 0 でない場合は 10141 に飛ばされる
+      if(intr .ne. 0) goto 10141                                         
+```
+
+以降の処理ではこの `v` を `y` や `x` に対して掛け合わせるのですが、全ての観測値の重みが等しい単純なパターンを想定すると `w` には $1/n$、`v` にはその平方根が入ります。
+例えば観測値の数が 100 であれば $w = 1/100 = 0.01$ 、$v = sqrt(1/100) = 0.1$ となります。
+
+ではこのような `w` や `v` を使って何をやっているかというと、 `y` に対しては：
+
+1. `y` に `v` を乗じたものを新たに `y` とする
+2. その `y` の内積（二乗和）から `v` と `y` の内積の二乗を減じ、平方根をとる（`ys`）
+3. `y` を `ys` で割る
+
+ということをしています。
+
+```{fortran}
+      ! 2. y と x の更新
+      ! 以下のセクションでは y と x それぞれについて観測値の重みを使って色々と調整する
+      ! まずは y      
+      ym = 0.0
+      y  = v*y 
+      ys = sqrt(dot_product(y,y)-dot_product(v,y)**2)
+      y  = y/ys 
+```
+
+ただこの説明だけでは意味が分からないと思いますので少し式を整理してみましょう。
+もとの `y` および `w` を $y0$ 、 $w0$ とおくと、
+
+$y_{i} = v_{i} * y0_{i} = \sqrt{w_{i}} * y0 = \sqrt{\frac{w0_{i}}{\sum{w0_{i}}}}y0_{i}$
+
+となります。
+また `ys` の二乗（平方根を取る前） $(ys)^2$ は
+
+$ (ys)^{2} = \sum{y_{i}^{2}} - (\sum{v_{i}y_{i}})^2 = \sum{\frac{w_{i}}{\sum{w_{i}}}y0_{i}^{2}} - (\sum{\frac{w_{i}}{\sum{w_{i}}}}y0_{i})^{2} $
+
+と書けます。
+ここで $w_{i}$ は観測値に対する重み $w0_{i}$ をその総和で除した形（単純なパターンでは $1/n$） となっていることを思い出すと、これを乗じたものの総和は重み付き平均となります。
+そうすると右辺の第一項はもともとの $y$（$y0$）の二乗の重み付き平均、第二項は重み付き平均の二乗が得られていることがわかります。
+二乗の平均から平均の二乗を引いたものと言えば分散ですので、その平方根をとった `ys` は $y0$ の重み付き標準偏差を得ているようです。
+
+
+これは参考用
+[tex: \begin{align}
+\mathfrak{J}_{jk} &= E\left\{\Sigma_{i=1}^ {N}\[ \frac{(Y_{i} - \mu_{i})}{var(Y_{i})} x_{ij} (\frac{\partial{\mu_{i}}}{\partial{\eta_{i}}}) \] \Sigma_{l=1}^ {N}\[ \frac{(Y_{l} - \mu_{l})}{var(Y_{l})} x_{lk} (\frac{\partial{\mu_{l}}}{\partial{\eta_{l}}}) \]\right\} \\
+&= \Sigma_{i=1}^ {N} \frac{E\[ (Y_{i} - \mu_{i})^ {2} \] x_{ij}x_{ik}}
+{\[var(Y_{i})\]^ 2} (\frac{\partial{\mu_{i}}}{\partial{\eta_{i}}})^ {2}
+\end{align}
+]
+
+実際にサンプルデータで計算してみましょう。
+まずは以下のような簡単なデータで二乗の平均から平均の二乗を引いたものが分散になることを確認します。
+
+```{r}
+# 適当なデータ
+a <- c(5, 5, 6, 7, 9)
+
+# 一般的な分散の計算
+mean((a - mean(a))^2)
+# 二乗の平均から平均の二乗を引いてみる
+mean(a^2) - mean(a)^2
+# R の var を使う
+var(a) * 4 / 5
+```
+
+上の例ではいずれも同じ値を返していることがわかります。
+なお `var` を使った計算では不偏分散ではなく標本分散に修正しました。
+
+続いて先の計算にしたがった場合に、やはり同じように分散・標準偏差が得られるかを見てみます。
+
+```{r}
+set.seed(123)
+n <- 10
+y0 <- rnorm(n)
+w0 <- rep(1, length(y0))
+
+w <- w0/sum(w0)
+v <- sqrt(w)
+
+y <- v*y0
+ys <- sqrt(y %*% y - (v %*% y)^2)
+y_new <- y/ys[1]
+
+mean((y0 - mean(y0))^2)
+mean(y0^2) - mean(y0)^2
+var(y0) * (n-1) / n
+(ys^2)[1]
+```
+
+$(ys)^{2}$ が $y0$ の分散になっていることが確認できますね。
+ということで、先ほどの処理では `w` や `v` を使ってもともとの `y` の重み付き標準偏差を計算し、その値で重み付きの `y` を除していることがわかりました。
+このサブルーチンの名前が `standard` なので当然ですが、標準化をしているようです。
+
+`x` についても基本的に同様の処理を行っており、`v` を使って重み付き標準偏差を計算・標準化をしています。
+ただし最後に重み付き平均の二乗 / 分散 に 1 を加算したものを `xv` に格納しており、これを `x` の分散としているようなのですが、これが良くわかりませんでした。
+
+ちなみに `ju` は先ほど説明したように各変数に異なる数値・バラつきがあるかを示すもので、バラつきがなければさっさとループを抜けて次の変数に移っていることがわかります。
+
+```{fortran}
+      ! x
+      do 10151 j=1,ni ! ni は nvars
+      if(ju(j).eq.0)goto 10151
+      xm(j) = 0.0 
+      x(:,j) = v*x(:,j) ! x にも重みを乗じる
+      xv(j) = dot_product(x(:,j),x(:,j)) ! x の二乗の重み付き平均
+
+      ! isd は標準化するかの指定で、標準化する場合は 1 が入っており 10171 に飛ばされない
+      if(isd .eq. 0) goto 10171 
+      xbq = dot_product(v, x(:,j))**2 ! x の重み付き平均の二乗
+      vc = xv(j)-xbq ! 重み付き分散
+      xs(j) = sqrt(vc) ! 重み付き標準偏差。 ys と対応している。
+      x(:,j) = x(:,j)/xs(j) ! 標準偏差で割って標準化。 y/ys と対応している。
+      
+      ! これはよくわからない
+      xv(j) = 1.0 + xbq/vc ! 重み付き平均の二乗 / 分散 に 1 を加算
+      goto 10181 
+10171 continue
+      xs(j)=1.0
+10181 continue
+      continue
+10151 continue
+      continue
+      goto 10191
+```
+
+切片が 0 でない場合はこちらにきます（基本はこっち）が、処理は上記と大体同じです。
+
+```{fortran}
+      ! 切片が 0 でない場合ここに来る
+      ! 基本はこっち
+10141 continue
+      ! x
+      do 10201 j=1,ni
+      if(ju(j).eq.0)goto 10201 
+      xm(j) = dot_product(w,x(:,j)) ! x の重み付き平均
+      x(:,j) = v*(x(:,j)-xm(j))  ! 重み付き平均を引いてから重みを乗じる
+      xv(j) = dot_product(x(:,j),x(:,j)) ! 二乗の重み付き平均
+      if(isd.gt.0) xs(j) = sqrt(xv(j)) ! 重み付き標準偏差
+10201 continue
+      continue
+      if(isd .ne. 0)goto 10221
+      xs = 1.0
+      goto 10231
+10221 continue
+      do 10241 j=1,ni
+      if(ju(j).eq.0)goto 10241
+      x(:,j) = x(:,j)/xs(j) ! 標準化はここで実行
+10241 continue
+      continue
+      xv=1.0
+10231 continue
+      continue
+      ym = dot_product(w,y) ! y の重み付き平均 
+      y = v*(y-ym)          ! y から重み付き平均を引いたものに重みを乗じる
+      ys=sqrt(dot_product(y,y)) ! 二乗和（分散）の平方根（SD）
+      y=y/ys ! 標準化
+```
+
+次の処理は共通のもので、y と x の内積（重み付き共分散）を計算し、 `g` に格納します。
+単純に `y` と `x` の内積を計算しているように見えますが、ここでの `y` は 
+$\frac{\sqrt{\frac{w_{i}}{\sum{w_{i}}}}y0_{i}}{SD(y0)}$、`x` は
+$\frac{\sqrt{\frac{w_{i}}{\sum{w_{i}}}}x0_{i}}{SD(x0)}$となっているので、
+
+```{fotran}
+      ! 3. 内積（重み付き共分散）を格納
+10191 continue                                                          
+      continue                                                          
+      g = 0.0                                                             
+      do 10251 j=1,ni 
+      ! j 番目の変数にバラツキがあるなら g に　y と x の内積（共分散）を格納する
+      if(ju(j).ne.0) g(j) = dot_product(y, x(:,j))                          
+10251 continue 
+      continue 
+      deallocate(v) 
+      return
+      end 
+```
+
+
+
+
+
+```{fotran}
+
+      ! jerr に 0 でない値が入っていると return
+      if(jerr.ne.0) return
+
+      cl=cl/ys
+
+      ! 標準化の指定が 0 であれば以下はスキップ                     
+      if(isd .le. 0) goto 10091
+      
+      ! 説明変数ごとに標準偏差を乗じる
+      do 10101 j=1,ni
+      cl(:,j)=cl(:,j)*xs(j)
+10101 continue                                                          
+      continue                                                          
+10091 continue                                                          
+      
+      ! flmin は glmnet のなかで flmin = as.double(lambda.min.ratio) で定義される
+      ! ここで lambda.min.ratio = ifelse(nobs < nvars, 0.01, 1e-04)
+      ! また if (lambda.min.ratio >= 1) stop("lambda.min.ratio should be less than 1")
+      ! なので基本的にここは引っかからないはず
+      if(flmin.ge.1.0) vlam=ulam/ys 
+```
+
+
+
+
+
+
+
+
+ys は y の重み調整済み標準偏差のようなやつ
+cl は lower.limit と upper.limit が格納されている
+cl = rbind(lower.limits, upper.limits) in glmnet
+目的変数を標準化しているから回帰係数も標準化するのか
+
+
 
 
 ```{fortran}
-                                                        
+      ! 3. フィッティング
+      ! 本体である elnet1 の呼び出し
+      call elnet1(parm,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,vlam,thr,maxi,xv,  lmu,ca,ia,nin,rsq,alm,nlp,jerr)
+
+      ! jerr が 0 でなければ return
+      if(jerr.gt.0) return
+
+      ! 4. 後処理
+      ! lmu はデフォルトで 1 
+      ! lmu = integer(1)                                             
+      do 10111 k=1,lmu
+      ! alm は nlambda、lambdaの長さ（ただし double）
+      ! alm = double(nlam)                                                  
+      ! ys は y の重み調整済み標準偏差
+      alm(k)=ys*alm(k)                                                  
+      
+      ! nin は nlambda（ただし integer）
+      ! nin = integer(nlam)
+      nk=nin(k)
+
+      do 10121 l=1,nk                                                   
+      ! 回帰係数に y の重み調整済み標準偏差を乗じ、説明変数の重み調整済み標準偏差で除す
+      ! ここで lambda の個数だけ係数が格納されている
+      ! ca は変数の数 * lambda の数
+      ! ys は重み調整済み標準偏差
+      ! v は sqrt(w)
+      ! w は w = w/sum(w)
+      ca(l,k)=ys*ca(l,k)/xs(ia(l))                                      
+10121 continue
+
+      continue
+      ! a0 は elnet.r で以下のように定義： a0 = double(nlam)                                                          
+      a0(k)=0.0                                                         
+      if(intr.ne.0) a0(k)=ym-dot_product(ca(1:nk,k),xm(ia(1:nk))) ! y の重み付き平均 - y_hat の平均   
+10111 continue
+
+      continue                                                          
+      deallocate(xm,xs,g,ju,xv,vlam)                                    
+      return                                                            
+      end                                                               
 
 ```
 
