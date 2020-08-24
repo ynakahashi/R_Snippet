@@ -1,4 +1,3 @@
-
 ## Sample data
 set.seed(123)
 n <- 1000 # レコード数
@@ -7,8 +6,8 @@ nx <- ni  # nx は本来非ゼロとする変数の数だけど、ここを実�
 alpha <- 1 # L1 / L2 それぞれに対する罰則の配分を決定するパラメータ
 
 b0 <- rnorm(ni) # 回帰係数
-b <- ifelse(abs(b0) < 0.5, 0, b_0) # Lasso っぽくするために不要な説明変数を作る
-x <- matrix(rnorm(n*ni, nrow = n, nol = ni))
+b <- ifelse(abs(b0) < 0.5, 0, b0) # Lasso っぽくするために不要な説明変数を作る
+x <- matrix(rnorm(n*ni), nrow = n, ncol = ni)
 # x <- matrix(0, nrow = n, ncol = ni) # 説明変数ごとに N(0, 1) にしたかったので列ごとに生成
 # for (i in 1:ni) {
 #   x[, i] <- rnorm(n)
@@ -67,71 +66,71 @@ for (m in 1:nlam) {
   dem <- alm * omb # ここから 10291
   ab <- alm * bta
   rsq0 <- rsq
-
+  
   # while(dlx >= thr & nin <= nx) {
-    nlp <- nlp + 1
-    dlx <- 0.0
+  nlp <- nlp + 1
+  dlx <- 0.0
+  
+  # 3番目のループ
+  # 全変数に対する回帰係数の推定
+  for (k in 1:ni) {
+    ak <- a[k]
+    u <- g[k] + ak * xv[k]
+    v <- abs(u[1]) - ab
+    # print(v)
     
-    # 3番目のループ
-    # 全変数に対する回帰係数の推定
-    for (k in 1:ni) {
-      ak <- a[k]
-      u <- g[k] + ak * xv[k]
-      v <- abs(u[1]) - ab
-      print(v)
-      
-      a[k] <- 0
-      if(v > 0) a[k] <- (sign(u) * abs(v))/(xv[k] + vp[k]*dem)
-      
-      nin <- k # 本当は if(mm[k] == 0) nin <- nin + 1
-      
-      # 4番目のループ
-      # 分散共分散行列を作る
-      for (j in 1:ni) {
-        if(j != k) {
-          c[j, nin] <- (t(x[, j]) %*% x[, k]) / n
-        } else {
-          c[j, nin] <- xv[j]
-        }
-      }
-      
-      mm[k] <- nin
-      ia[nin] <- k
-      del <- a[k] - ak
-      rsq <- rsq + del*(2.0 * g[k] - del*xv[k])
-      
-      # 5番目のループ
-      for (j in 1:ni) {
-        g[j] <- g[j] - c[j, mm[k]]*del
+    a[k] <- 0
+    if(v > 0) a[k] <- (sign(u) * abs(v))/(xv[k] + vp[k]*dem)
+    
+    nin <- k # 本当は if(mm[k] == 0) nin <- nin + 1
+    
+    # 4番目のループ
+    # 分散共分散行列を作る
+    for (j in 1:ni) {
+      if(j != k) {
+        c[j, nin] <- (t(x[, j]) %*% x[, k]) / n
+      } else {
+        c[j, nin] <- xv[j]
       }
     }
     
+    mm[k] <- nin
+    ia[nin] <- k
+    del <- a[k] - ak
+    rsq <- rsq + del*(2.0 * g[k] - del*xv[k])
     
-    # while(dlx >= thr & nlp <= maxit) {
-      # 6番目のループ
-      for (l in 1:nin) {
-        k <- ia[l]
-        ak <- a[k]
-        u <- g[k] + ak*xv[k]
-        v <- abs(u) - vp[k]*ab
-        a[k] <- 0.0
-        if(v > 0.0) a[k] <- (sign(u) * abs(v))/(xv[k]+vp[k]*dem)
-        if(a[k] == ak) next
-        del <- a[k] - ak
-        rsq <- rsq + del*(2.0*g[k] - del*xv[k])
-        dlx <- max(xv[k]*del^2, dlx)
-
-        # 7番目のループ
-        for (j in 1:nin) {
-          g[ia[j]] <- g[ia[j]] - c[ia[j], mm[k]]*del
-        }
-      }
-    # }
+    # 5番目のループ
+    for (j in 1:ni) {
+      g[j] <- g[j] - c[j, mm[k]]*del
+    }
+  }
+  
+  
+  # while(dlx >= thr & nlp <= maxit) {
+  # 6番目のループ
+  for (l in 1:nin) {
+    k <- ia[l]
+    ak <- a[k]
+    u <- g[k] + ak*xv[k]
+    v <- abs(u) - vp[k]*ab
+    a[k] <- 0.0
+    if(v > 0.0) a[k] <- (sign(u) * abs(v))/(xv[k]+vp[k]*dem)
+    if(a[k] == ak) next
+    del <- a[k] - ak
+    rsq <- rsq + del*(2.0*g[k] - del*xv[k])
+    dlx <- max(xv[k]*del^2, dlx)
     
-    # 8番目のループ
-    # for (j in 1:ni) {
-    #   g[j] <- g[j] - dot_product(da(1:nin),c(j,1:nin))       
-    # }
+    # 7番目のループ
+    for (j in 1:nin) {
+      g[ia[j]] <- g[ia[j]] - c[ia[j], mm[k]]*del
+    }
+  }
+  # }
+  
+  # 8番目のループ
+  # for (j in 1:ni) {
+  #   g[j] <- g[j] - dot_product(da(1:nin),c(j,1:nin))       
+  # }
   # }
   
   rsqo[m] <- rsq
@@ -141,7 +140,7 @@ for (m in 1:nlam) {
   # for (j in 1:nin) {
   #   if(ao[j,m] != 0.0) me <- me+1
   # }
-
+  
 }
 
 oldpar <- par(no.readonly = T)
