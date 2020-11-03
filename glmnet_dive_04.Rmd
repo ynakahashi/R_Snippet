@@ -1,0 +1,796 @@
+---
+title: "glmnetをもう少し理解したい③"
+output: html_document
+---
+
+それでは前回の記事に続いて `elnet1` の紹介です。過去の記事はこちらです。
+
+前回の記事のリンク
+前々回の記事のリンク
+前々々回の記事のリンク
+
+[:contents]
+
+### `elnet1` の実装
+前回の記事で最後に触れた通り、 `elnet1` 自体は 180 行程度とそれほど大きくはないサブルーチンなのですが、多数のループが込み入っています。
+具体的には 9 つのループ処理（fortran なので do 文）があり、それらがネストした構造のなかで `goto` によって行き来しています。
+
+大まかな構造は以下の通りです（わかりやすいように R で書いてありますが、添字は統一してあります）。
+
+```{r}
+# 1番目
+for (m in 1:nlam) {
+  # 2番目のループ
+  for (j in 1:ni) {
+  }
+  # 3番目のループ
+  for (k in 1:ni) {
+    # 4番目のループ
+    for (j in 1:ni) {
+    }
+    # 5番目のループ
+    for (j in 1:ni) {
+    }
+  }
+  # 6番目のループ
+  for (l in 1:nin) {
+    # 7番目のループ
+    for (j in 1:nin) {
+    }
+  }
+  # 8番目のループ
+  for (j in 1:ni) {
+  }
+  # 9番目のループ
+  for (j in 1:nin) {
+  }
+}
+```
+
+ではループを１つずつ見ていきましょう。
+
+#### （前処理と）ループ①
+
+
+```{fortran}
+      subroutine elnet1(beta,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,ulam,th
+     *r,maxit,xv,  lmu,ao,ia,kin,rsqo,almo,nlp,jerr)
+      implicit double precision(a-h,o-z)
+      double precision vp(ni),g(ni),x(no,ni),ulam(nlam),ao(nx,nlam)
+      double precision rsqo(nlam),almo(nlam),xv(ni)
+      double precision cl(2,ni)
+      integer ju(ni),ia(nx),kin(nlam)
+      double precision, dimension (:), allocatable :: a,da
+      integer, dimension (:), allocatable :: mm
+      double precision, dimension (:,:), allocatable :: c
+      allocate(c(1:ni,1:nx),stat=jerr)
+      if(jerr.ne.0) return;
+
+      ! 初期パラメータを取得
+      call get_int_parms(sml,eps,big,mnlam,rsqmax,pmin,exmx,itrace)
+
+      ! a, mm, da を allocate
+      allocate(a(1:ni),stat=jerr)  ! a は説明変数の数の次元をもつベクトル
+      
+      if(jerr.ne.0) return
+      allocate(mm(1:ni),stat=jerr) ! mm は説明変数の数の次元をもつベクトル
+      
+      if(jerr.ne.0) return
+      allocate(da(1:ni),stat=jerr)
+      if(jerr.ne.0) return
+```
+
+beta はもともと parm として受け渡されたもので、これは elnet.r で parm = alpha として渡している。この alpha は glmnet.r で定義されたもの。L1 と L2 それぞれに対する罰則の配分。
+
+```{fortran}
+      bta=beta
+      omb=1.0-bta
+      alm=0.0
+      alf=1.0
+```
+
+flmin が 1.0 以上の場合（lambda が指定されている場合）は以下をスキップして 10271 に移動
+
+eps と flmin の大きい方を eqs とする。 eps は get_int_parms で eps0 を受け取っており、 1.*0d-6 なので 0    
+
+```{fortran}
+      if(flmin .ge. 1.0)goto 10271
+      eqs=max(eps,flmin)
+      alf=eqs**(1.0/(nlam-1))  ! alf を eqs の (1/(nlam-1)) で定義する
+
+10271 continue
+      ! パラメータの初期化
+      rsq=0.0 ! 残差平方和
+      a=0.0
+      mm=0
+      nlp=0
+      nin=nlp ! nin はここでは 0
+      
+      iz=0
+      mnl=min(mnlam,nlam)
+```
+
+! ここからがループの本体
+! 一番外側のループは lambda の個数（nlam）
+!! 以下のまとまりは： 
+!!! flmin が 1.0 より小さい場合（glmnet において lambda に指定がない場合）は goto 10301 なので alm = ulam(m) をスキップ
+!!! flmin が 1.0 以上の場合は alm = ulam(m) とし、10301 ~ 10331 の処理をスキップ
+
+```{fortran}
+      do 10281 m=1,nlam ! nlambda なので lambda の個数（デフォルトは 100）だけループ。 m はループのインデックス
+
+      if(itrace.ne.0) call setpb(m-1)  ! プログレスバー     
+      if(flmin .lt. 1.0)goto 10301
+      alm=ulam(m) ! flmin が 1.0 以上の場合は alm = ulam(m) とする。 glmnet.r で lambda の指定がない場合は ulam は 1 が入る。基本指定しないと思うので 1 。指定があれば 1 より大きい値もありうる。
+      
+      goto 10291
+10301 if(m .le. 2)goto 10311 ! ループの１回目と２回目はここをスキップ   
+      alm=alm*alf ! ループの３回目からは alm を alf を乗じて 10311、10321、10341、10331 の処理をスキップ              
+      goto 10291
+10311 if(m .ne. 1)goto 10321 ! ループの２回目はここをスキップ                       
+      alm=big     ! ループの１回目は alm = 0.0 を big = 9.9d35（アホみたいに大きな値） にして 10321、10341の処理をスキップ   
+      goto 10331
+10321 continue
+      alm=0.0     ! ループの２回目は alm を いったん 0 にする
+```
+
+#### ループ②
+
+```{fortran}
+      ! ２番目のループ
+      ! alm の更新
+      do 10341 j=1,ni  ! ni は変数の数    
+      if(ju(j).eq.0)goto 10341  ! ju は 各変数列において全く同じ値が入っていないかを確認したもの（chkvars で行われる）で、全く同じなら 0 となりスキップされる
+      if(vp(j).le.0.0)goto 10341   ! vp は各変数に対する罰則の重み（デフォルトは 1） が入ったベクトル（vp = as.double(penalty.factor) in glmnet.r）
+      alm=max(alm,abs(g(j))/vp(j)) ! ここで alm と abs(g(j)) / vp(j) の max をとる。罰則を考慮した内積の最大値を取りたい。 g は j 番目の変数にバラツキがあるとき y と x の内積（共分散）を格納したもの。内積の絶対値を罰則で割ったものを alm とする。でも alm=0.0 としていて、 vp は [0,1) なので、要は内積が負なら 0、正なら内積をとるので [0, 内積] にしている。
+10341 continue  ! ２番目のループここまで
+```            
+
+
+#### ループ③
+##### ループ④
+##### ループ⑤
+#### ループ⑥
+##### ループ⑦
+#### ループ⑧
+#### ループ⑨
+
+
+```{fortran}
+      continue                                                          
+      alm=alf*alm/max(bta,1.0d-3)  ! さらにここで bta（つまり alpha、 L1 と　L2 への重みの配分パラメータ）と 0.001 の max で alm を割る
+10331 continue
+10291 continue
+      dem=alm*omb ! omb は 1-bta
+      ab=alm*bta  ! さらに alm に bta を乗じたものを ab とする
+      rsq0=rsq  ! rsq はこの時点で 0.0 なので rsq0 も 0
+      jz=1
+      continue
+10351 continue
+      if(iz*jz.ne.0) goto 10360   ! iz = 0, jz = 1
+      nlp=nlp+1  ! nlp は 0 だったので一番外側のループ（lambda）のカウンタになってる？
+      dlx=0.0                                                           
+      
+      ! ３番目のループは本体
+      ! ここで回帰係数を推定している
+      ! ３番目のループは ni なので説明変数。k をインデックスとして各説明変数をさらう。
+      do 10371 k=1,ni                                                   
+      if(ju(k).eq.0)goto 10371 
+      ! ju は各説明変数列のバラツキを示す 1/0 のベクトル。バラツキがなければ（ju(k) == 0 であれば）評価をスキップ                                         
+      ak=a(k)  
+      ! k 番目の変数の a の値を ak に代入。 a = 0.0 で初期化されているので ak も 0。
+      ! ただし lambda のループ（一番外側のループ） の二回目以降は 縮小された回帰係数が入っている                                                     
+
+      ! ここは大きなポイント!!!!
+      ! 回帰係数を縮小
+      u=g(k)+ak*xv(k)  
+      ! g(k) に ak を加算する。g(k) は y と k 番目の x の内積。 標準化前提なら回帰係数に相当（beta = cov(y, x) / var(x)なので）
+      ! ak は lamda のループ（一番外側）１回目は 0、２回目以降は前回の lambda で得られた推定値。 xv で重みをつけたものを加算する
+      ! xv は weight を乗じた x の二乗和                                                
+      v=abs(u)-vp(k)*ab 
+      ! x の回帰係数から vp * ab を減じる、つまり回帰係数を縮小している。 b(alpha) が 1（lasso）なら lambda の分だけ縮小される。
+      ! vp(k) は k 番目の変数に対する罰則の重みでデフォルトは 1 なので ab を減じる。 ab は alm * bta                                               
+      
+      ! a(k) を更新
+      ! a は回帰係数なので、 v が 0.0 より大きくないと 0 として推定される!!!
+      a(k)=0.0                                                          
+      if(v.gt.0.0) a(k)=max(cl(1,k),min(cl(2,k),sign(v,u)/(xv(k)+vp(k)*dem))) 
+      ! v が 0 より大きい（前回ループの推定値などで調整した回帰係数の絶対値が lambda * alpha より大きい）場合、 a を更新する。そうでなければ 0のまま。
+      ! sign(a, b) は a の絶対値に b の符号を乗じる関数。 u は y と x の内積なので回帰係数の符号を取ってきて v に乗じる
+      ! xv は weight を乗じた x の二乗和
+      ! vp(k) は k 番目の変数に対する罰則の重みでデフォルトは 1                                               
+      ! d*em になってるけど dem じゃないの？？？？
+      ! cl は glmnet.r で cl = rbind(lower.limits, upper.limits) として定義されているので、 1行目 は 下限、2行目は上限が入っている
+      ! max(下限, min(上限, 縮小された回帰係数)) という形なので、上限・下限の範囲内で回帰係数を縮小する
+      ! d*em は dem のことなら alm * (1-bta)
+      ! x の weight 調整済み二乗和に罰則 * 配分 を加算したもので 縮小された回帰係数を調整したものを a に格納している
+
+      ! a(k) が ak と同じなら（このループで更新がなければ）ループを抜けて次の変数へ
+      if(a(k).eq.ak)goto 10371                                          
+      ! mm は lambda ループの１回目では 0 なので１回目だけ処理を行う？                                        
+      if(mm(k) .ne. 0)goto 10391 ! 10391 は４番目のループの先なので、 mm が 0 でなければ ４番目のループをスキップ
+      nin=nin+1  ! mm(k) が 0 なら nin を +1 する。 おそらく、パラメータが 0 でないときに mm は 0 となる。                                                      
+      if(nin.gt.nx)goto 10372 ! nx は非ゼロとする変数の上限なので、推定したパラメータ数がそれを越えると３番目のループを抜ける
+      
+      ! ４番目のループ
+      ! 分散共分散行列のようなものを作っている
+      ! ここでもループの対象は説明変数（ただしインデックスは k ではなく j）
+      do 10401 j=1,ni                                                   
+      ! バラツキがなければ以降の処理をスキップ                                          
+      if(ju(j).eq.0)goto 10401
+      ! mm が 0（パラメータが 0 でない）なら 以降をスキップ。                                        
+      if(mm(j) .eq. 0)goto 10421
+      c(j,nin)=c(k,mm(j))                                               
+      goto 10401                                                  
+10421 continue                                                          
+      if(j .ne. k)goto 10441  ! 変数が同一でなければ 10441 に飛ぶ                                          
+      c(j,nin)=xv(j) ! 同一だったらここ                                                   
+      goto 10401                                                        
+10441 continue                                                          
+      c(j,nin)=dot_product(x(:,j),x(:,k)) ! 同一でなかったら j と k の内積をとる                               
+10401 continue ! ４番目のループはここまで
+
+      continue 
+      ! mm に nin を入れる                                                         
+      mm(k)=nin
+      ! ia に k を格納                                                         
+      ia(nin)=k ! 0 でないパラメータが推定された変数の位置                                                         
+10391 continue   
+      ! a(k) の差分をとる。 a(k)、 ak は推定された回帰係数。                                                       
+      del=a(k)-ak
+      ! 残差平方和を更新する
+      rsq=rsq+del*(2.0*g(k)-del*xv(k))
+      ! rsq = rsq + del * (2.0 * g(k) - del * xv(k))
+      ! rsq は残差平方和
+      ! del は a(k)-ak
+      ! g(k) は縮小前の回帰係数（y と x(k) の内積）、そこから weight 調整済みの x の二乗和 を減じる                                                      
+      dlx=max(xv(k)*del**2,dlx)
+
+      ! ５番目のループ          
+      ! 探索範囲は三度説明変数                               
+      do 10451 j=1,ni ! インデックスは再度 j を使う                                                  
+      if(ju(j).ne.0) g(j)=g(j)-c(j,mm(k))*del                           
+10451 continue ! ５番目のループはここまで                                                         
+      continue                                                          
+10371 continue ! ３番目のループはここまで
+
+10372 continue                                                          
+      if(dlx.lt.thr)goto 10352                                          
+      if(nin.gt.nx)goto 10352                                           
+      if(nlp .le. maxit)goto 10471                                      
+      jerr=-m                                                           
+      return                                                            
+10471 continue                                                          
+10360 continue                                                          
+      iz=1                                                              
+      da(1:nin)=a(ia(1:nin))                                            
+      continue                                                          
+10481 continue                                                          
+      nlp=nlp+1                                                         
+      dlx=0.0
+
+      ! ６番目のループ
+      ! ３番目のループと同じことを ni ではなく nin に対して再度実行                                                           
+      do 10491 l=1,nin                                                  
+      k=ia(l) ! k を取り出す（ ia には 0 ではないパラメータが推定された変数の列が格納されてる）                                                         
+      ak=a(k) ! a を取り出す                                                            
+      u=g(k)+ak*xv(k)                                                   
+      v=abs(u)-vp(k)*ab                                                 
+      a(k)=0.0                                                          
+      if(v.gt.0.0) a(k)=max(cl(1,k),min(cl(2,k),sign(v,u)/(xv(k)+vp(k)*dem)))
+      if(a(k).eq.ak)goto 10491                                          
+      del=a(k)-ak                                                       
+      rsq=rsq+del*(2.0*g(k)-del*xv(k))                                  
+      dlx=max(xv(k)*del**2,dlx)
+
+      ! ７番目のループ
+      ! 上と同様、 nin に対して g を更新                                         
+      do 10501 j=1,nin                                                  
+      g(ia(j))=g(ia(j))-c(ia(j),mm(k))*del                              
+10501 continue ! ７番目のループここまで
+
+      continue                                                          
+10491 continue ! ６番目のループここまで
+
+      continue                                                          
+      if(dlx.lt.thr)goto 10482                                          
+      if(nlp .le. maxit)goto 10521                                      
+      jerr=-m                                                           
+      return                                                            
+10521 continue                                                          
+      goto 10481  ! えっ！！！                                                      
+10482 continue                                                          
+      da(1:nin)=a(ia(1:nin))-da(1:nin)                                  
+      
+      ! ８番目のループ
+      do 10531 j=1,ni                                                   
+      if(mm(j).ne.0)goto 10531                                          
+      if(ju(j).ne.0) g(j)=g(j)-dot_product(da(1:nin),c(j,1:nin))        
+10531 continue ! ８番目のループここまで
+                                                         
+      continue                                                          
+      jz=0                                                              
+      goto 10351  ! えっ！！ ３番目のループの開始まで戻すの！                                                     
+10352 continue                                                          
+      if(nin .le. nx)goto 10551  ! nin が nx を超えた場合はここにくる                                       
+      jerr=-10000-m                                                     
+      goto 10282 ! jerr を 更新して elnet1 を抜ける                                                      
+10551 continue                                                          
+      if(nin.gt.0) ao(1:nin,m)=a(ia(1:nin))                             
+      kin(m)=nin   ! m 回目のループの nin を kin[m] に格納する                                                     
+      rsqo(m)=rsq  ! m 回目のループの rsq を rsqo[m] に格納する                                                     
+      almo(m)=alm  ! m 回目のループの alm を almo[m] に格納する                                                     
+      lmu=m                                                             
+      if(m.lt.mnl)goto 10281                                            
+      if(flmin.ge.1.0)goto 10281                                        
+      me=0 
+
+      ! ９番目のループ                                                             
+      do 10561 j=1,nin                                                  
+      if(ao(j,m).ne.0.0) me=me+1                                        
+10561 continue ! ９番目のループここまで 
+
+      continue                                                          
+      if(me.gt.ne)goto 10282                                            
+      if(rsq-rsq0.lt.sml*rsq)goto 10282                                 
+      if(rsq.gt.rsqmax)goto 10282                                       
+10281 continue ! lambda のループはここまで
+
+10282 continue                                                          
+      deallocate(a,mm,c,da)                                             
+      return                                                            
+      end                                                               
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{fortran}
+      subroutine elnetu(parm,no,ni,x,y,w,jd,vp,cl,ne,nx,nlam,  flmin,ulam,thr,isd,intr,maxit,  lmu,a0,ca,ia,nin,rsq,alm,nlp,jerr)
+      implicit double precision(a-h,o-z)                                
+      double precision x(no,ni),y(no),w(no),vp(ni),ulam(nlam),cl(2,ni)  
+      double precision ca(nx,nlam),a0(nlam),rsq(nlam),alm(nlam)         
+      integer jd(*),ia(nx),nin(nlam)                                    
+      double precision, dimension (:), allocatable :: xm,xs,g,xv,vlam   
+      integer, dimension (:), allocatable :: ju                         
+      allocate(g(1:ni),stat=jerr)  ! g は変数の数を次元にもつベクトル                                     
+      if(jerr.ne.0) return                                              
+      allocate(xm(1:ni),stat=jerr)                                      
+      if(jerr.ne.0) return                                              
+      allocate(xs(1:ni),stat=jerr)                                      
+      if(jerr.ne.0) return                                              
+      allocate(ju(1:ni),stat=jerr)                                     
+      if(jerr.ne.0) return                                              
+      allocate(xv(1:ni),stat=jerr)                                    
+      if(jerr.ne.0) return                                              
+      allocate(vlam(1:nlam),stat=jerr)                                  
+      if(jerr.ne.0) return
+
+      ! 1. 前処理
+      call chkvars(no,ni,x,ju)
+
+      if(jd(1).gt.0) ju(jd(2:(jd(1)+1)))=0
+      if(maxval(ju) .gt. 0)goto 10071                                   
+      jerr=7777                                                         
+      return                                                            
+10071 continue
+```
+
+この `chkvars` では x の各変数について一行目の値と異なる値が二行目以降にあるかを確認し、 `ju` に格納しています。
+異なる値がなければ全ての値は同じということになりますので、例えば回帰係数を推定する意味はありません。
+先の処理ではこの `ju` を参照してスキップするかを決めている箇所が多々出てきます。
+
+```{fortran}
+      subroutine chkvars(no,ni,x,ju)
+      implicit double precision(a-h,o-z)
+      double precision x(no,ni)
+      integer ju(ni)
+      
+      ! ここから各変数のチェックを開始
+      do 11061 j=1,ni
+      ju(j)=0
+      t=x(1,j) ! 1行目の値を取得
+
+      ! ここから2行目の値を確認する
+      do 11071 i=2,no
+      ! t は x(1, j) なので、各変数 j について 1 行目の値と等しいかを確認している
+      if(x(i,j).eq.t) goto 11071 ! 等しければ次の行へ
+      ju(j)=1 ! 等しくない数値があれば ju を 1 にして次の変数へ
+      goto 11072
+11071 continue
+11072 continue
+11061 continue
+      continue
+      return
+      end
+```
+
+続いて `standard` というサブルーチンを呼び出して標準化を行います。
+
+```{fortran}      
+      ! 2. 標準化
+      call standard(no,ni,x,y,w,isd,intr,ju,g,xm,xs,ym,ys,xv,jerr)
+```
+
+この `standard` とうサブルーチンは結構大きく見えますが、切片の有無で処理を分けているため重複部分があります。
+処理の内容としては：
+
+1. 重みの変換
+2. y と x の更新
+3. y と x の内積（共分散）を計算
+
+となっています。
+まずは重みの変換を確認してみると、重み `w` を「重みの総和あたりの重み」に変換し、
+さらにその平方根をとったものを `v` として定義しています。
+またその次から、先に述べたように切片の有無によって処理を分けています。
+
+```{fortran}
+      subroutine standard(no,ni,x,y,w,isd,intr,ju,g,xm,xs,ym,ys,xv,jerr)
+      implicit double precision(a-h,o-z)                                
+      double precision x(no,ni),y(no),w(no),g(ni),xm(ni),xs(ni),xv(ni)  
+      integer ju(ni)                                                    
+      double precision, dimension (:), allocatable :: v                 
+      allocate(v(1:no),stat=jerr)                                       
+      if(jerr.ne.0) return
+      
+      ! 1. 重みの変換
+      w=w/sum(w)
+      v=sqrt(w) 
+
+      ! intr は intercept なので切片が 0 であるかで判定
+      ! 切片が 0 でない場合は 10141 に飛ばされる
+      if(intr .ne. 0) goto 10141                                         
+```
+
+以降の処理ではこの `v` を `y` や `x` に対して掛け合わせるのですが、全ての観測値の重みが等しい単純なパターンを想定すると `w` には $1/n$、`v` にはその平方根が入ります。
+例えば観測値の数が 100 であれば $w = 1/100 = 0.01$ 、$v = sqrt(1/100) = 0.1$ となります。
+
+ではこのような `w` や `v` を使って何をやっているかというと、 `y` に対しては：
+
+1. `y` に `v` を乗じたものを新たに `y` とする
+2. その `y` の内積（二乗和）から `v` と `y` の内積の二乗を減じ、平方根をとる（`ys`）
+3. `y` を `ys` で割る
+
+ということをしています。
+
+```{fortran}
+      ! 2. y と x の更新
+      ! 以下のセクションでは y と x それぞれについて観測値の重みを使って色々と調整する
+      ! まずは y      
+      ym = 0.0
+      y  = v*y 
+      ys = sqrt(dot_product(y,y)-dot_product(v,y)**2)
+      y  = y/ys 
+```
+
+ただこの説明だけでは意味が分からないと思いますので少し式を整理してみましょう。
+もとの `y` および `w` を $y0$ 、 $w0$ とおくと、
+
+$y_{i} = v_{i} * y0_{i} = \sqrt{w_{i}} * y0 = \sqrt{\frac{w0_{i}}{\sum{w0_{i}}}}y0_{i}$
+
+となります。
+また `ys` の二乗（平方根を取る前） $(ys)^2$ は
+
+$ (ys)^{2} = \sum{y_{i}^{2}} - (\sum{v_{i}y_{i}})^2 = \sum{\frac{w_{i}}{\sum{w_{i}}}y0_{i}^{2}} - (\sum{\frac{w_{i}}{\sum{w_{i}}}}y0_{i})^{2} $
+
+と書けます。
+ここで $w_{i}$ は観測値に対する重み $w0_{i}$ をその総和で除した形（単純なパターンでは $1/n$） となっていることを思い出すと、これを乗じたものの総和は重み付き平均となります。
+そうすると右辺の第一項はもともとの $y$（$y0$）の二乗の重み付き平均、第二項は重み付き平均の二乗が得られていることがわかります。
+二乗の平均から平均の二乗を引いたものと言えば分散ですので、その平方根をとった `ys` は $y0$ の重み付き標準偏差を得ているようです。
+
+
+これは参考用
+[tex: \begin{align}
+\mathfrak{J}_{jk} &= E\left\{\Sigma_{i=1}^ {N}\[ \frac{(Y_{i} - \mu_{i})}{var(Y_{i})} x_{ij} (\frac{\partial{\mu_{i}}}{\partial{\eta_{i}}}) \] \Sigma_{l=1}^ {N}\[ \frac{(Y_{l} - \mu_{l})}{var(Y_{l})} x_{lk} (\frac{\partial{\mu_{l}}}{\partial{\eta_{l}}}) \]\right\} \\
+&= \Sigma_{i=1}^ {N} \frac{E\[ (Y_{i} - \mu_{i})^ {2} \] x_{ij}x_{ik}}
+{\[var(Y_{i})\]^ 2} (\frac{\partial{\mu_{i}}}{\partial{\eta_{i}}})^ {2}
+\end{align}
+]
+
+実際にサンプルデータで計算してみましょう。
+まずは以下のような簡単なデータで二乗の平均から平均の二乗を引いたものが分散になることを確認します。
+
+```{r}
+# 適当なデータ
+a <- c(5, 5, 6, 7, 9)
+
+# 一般的な分散の計算
+mean((a - mean(a))^2)
+# 二乗の平均から平均の二乗を引いてみる
+mean(a^2) - mean(a)^2
+# R の var を使う
+var(a) * 4 / 5
+```
+
+上の例ではいずれも同じ値を返していることがわかります。
+なお `var` を使った計算では不偏分散ではなく標本分散に修正しました。
+
+続いて先の計算にしたがった場合に、やはり同じように分散・標準偏差が得られるかを見てみます。
+
+```{r}
+set.seed(123)
+n <- 10
+y0 <- rnorm(n)
+w0 <- rep(1, n)
+
+w <- w0/sum(w0)
+v <- sqrt(w)
+
+y <- v*y0
+ys <- sqrt(y %*% y - (v %*% y)^2)
+y_new <- y/ys[1]
+
+mean((y0 - mean(y0))^2)
+mean(y0^2) - mean(y0)^2
+var(y0) * (n-1) / n
+(ys^2)[1]
+```
+
+$(ys)^{2}$ が $y0$ の分散になっていることが確認できますね。
+ということで、先ほどの処理では `w` や `v` を使ってもともとの `y` の重み付き標準偏差を計算し、その値で重み付きの `y` を除していることがわかりました。
+このサブルーチンの名前が `standard` なので当然ですが、標準化をしているようです。
+
+`x` についても基本的に同様の処理を行っており、`v` を使って重み付き標準偏差を計算・標準化をしています。
+ただし最後に重み付き平均の二乗 / 分散 に 1 を加算したものを `xv` に格納しており、これを `x` の分散としているようなのですが、これが良くわかりませんでした。
+
+ちなみに `ju` は先ほど説明したように各変数に異なる数値・バラつきがあるかを示すもので、バラつきがなければさっさとループを抜けて次の変数に移っていることがわかります。
+
+```{fortran}
+      ! x
+      do 10151 j=1,ni ! ni は nvars
+      if(ju(j).eq.0)goto 10151
+      xm(j) = 0.0 
+      x(:,j) = v*x(:,j) ! x にも重みを乗じる
+      xv(j) = dot_product(x(:,j),x(:,j)) ! x の二乗の重み付き平均
+
+      ! isd は標準化するかの指定で、標準化する場合は 1 が入っており 10171 に飛ばされない
+      if(isd .eq. 0) goto 10171 
+      xbq = dot_product(v, x(:,j))**2 ! x の重み付き平均の二乗
+      vc = xv(j)-xbq ! 重み付き分散
+      xs(j) = sqrt(vc) ! 重み付き標準偏差。 ys と対応している。
+      x(:,j) = x(:,j)/xs(j) ! 標準偏差で割って標準化。 y/ys と対応している。
+      
+      ! これはよくわからない
+      xv(j) = 1.0 + xbq/vc ! 重み付き平均の二乗 / 分散 に 1 を加算
+      goto 10181 
+10171 continue
+      xs(j)=1.0
+10181 continue
+      continue
+10151 continue
+      continue
+      goto 10191
+```
+
+切片が 0 でない場合はこちらにきます（基本はこっち）が、処理は上記と大体同じです。
+`y`、`x` ともに値を更新する前に重み付き平均を引いているところが違う点ですね。
+
+```{fortran}
+      ! 切片が 0 でない場合ここに来る
+      ! 基本はこっち
+10141 continue
+      ! x
+      do 10201 j=1,ni
+      if(ju(j).eq.0)goto 10201 
+      xm(j) = dot_product(w,x(:,j)) ! x の重み付き平均
+      x(:,j) = v*(x(:,j)-xm(j))  ! 重み付き平均を引いてから重みを乗じる
+      xv(j) = dot_product(x(:,j),x(:,j)) ! 二乗の重み付き平均
+      if(isd.gt.0) xs(j) = sqrt(xv(j)) ! 重み付き標準偏差
+10201 continue
+      continue
+      if(isd .ne. 0)goto 10221
+      xs = 1.0
+      goto 10231
+10221 continue
+      do 10241 j=1,ni
+      if(ju(j).eq.0)goto 10241
+      x(:,j) = x(:,j)/xs(j) ! 標準化はここで実行
+10241 continue
+      continue
+      xv=1.0
+10231 continue
+      continue
+      ym = dot_product(w,y) ! y の重み付き平均 
+      y  = v*(y-ym)          ! y から重み付き平均を引いたものに重みを乗じる
+      ys = sqrt(dot_product(y,y)) ! 二乗和（分散）の平方根（SD）
+      y  = y/ys ! 標準化
+```
+
+次の処理は共通のもので、y と x の内積を計算し、 `g` に格納します。
+単純に `y` と `x` の内積を計算しているように見えますが、ここでの `y` は 
+$\frac{\sqrt{\frac{w_{i}}{\sum{w_{i}}}}y0_{i}}{SD(y0)}$、`x` は
+$\frac{\sqrt{\frac{w_{i}}{\sum{w_{i}}}}x0_{i}}{SD(x0)}$となっているので、その内積は重み付き共分散をそれぞれの標準偏差の積で除したもの、つまり重み付きの相関係数となっているはずです。
+
+```{fotran}
+      ! 3. 内積（重み付き相関係数）を格納
+10191 continue                                                          
+      continue                                                          
+      g = 0.0                                                             
+      do 10251 j=1,ni 
+      ! j 番目の変数にバラツキがあるなら g に y と x の内積（共分散）を格納する
+      ! ただしこの時点での y と x はそれぞれ標準偏差で除したものとなっている
+      if(ju(j).ne.0) g(j) = dot_product(y, x(:,j))                          
+10251 continue 
+      continue 
+      deallocate(v) 
+      return
+      end 
+```
+
+先のサンプルデータで確かめてみましょう。
+重みが全て等しいという単純なパターンでは、更新された `y` と `x` の内積が相関係数になっていることが確認できます。
+
+```{r}
+set.seed(123)
+n <- 10
+y0 <- rnorm(n)
+x0 <- rnorm(n)
+w0 <- rep(1, n)
+
+w <- w0/sum(w0)
+v <- sqrt(w)
+
+# y <- v*y0
+# ys <- sqrt(y %*% y - (v %*% y)^2)
+y <- v*(y0 - (w %*% y0)[1])
+ys <- sqrt(y %*% y)
+y_new <- y/ys[1]
+
+# x <- v*x0
+# xs <- sqrt(x %*% x - (v %*% x)^2)
+x <- v*(x0 - (w %*% x0)[1])
+xs <- sqrt(x %*% x)
+x_new <- x/xs[1]
+
+(y_new %*% x_new)[1] # 内積
+cor(y_new, x_new) # 更新後の y と ｘの相関係数
+cor(y0, x0) # 元の値の相関係数
+```
+
+一方重みが観測値によって異なる場合はというと、これは近い値になるものの完全に一致はしませんでした。（でもこれなんでだろう。一致するような気がするんだけど）
+
+```{r}
+set.seed(123)
+n <- 10
+y0 <- rnorm(n)
+x0 <- rnorm(n)
+w0 <- rep(1, n) - 0.5 * ifelse(runif(n) > 0.8, 1, 0) # 一部のデータに対して重みを小さくしている
+
+w <- w0/sum(w0)
+v <- sqrt(w)
+
+# y <- v*y0
+# ys <- sqrt(y %*% y - (v %*% y)^2)
+y <- v*(y0 - (w %*% y0)[1])
+ys <- sqrt(y %*% y)
+y_new <- y/ys[1]
+
+# x <- v*x0
+# xs <- sqrt(x %*% x - (v %*% x)^2)
+x <- v*(x0 - (w %*% x0)[1])
+xs <- sqrt(x %*% x)
+x_new <- x/xs[1]
+
+(y_new %*% x_new)[1]
+cor(y_new, x_new)
+cor(y0, x0)
+```
+
+ところで重み調整後の `y` と `x` の内積が相関係数と近似（一致？）するなら、個別のデータのペアが相関に対してどのような影響を持っているかを評価できるのではないでしょうか。
+内積ではなく各ペアの掛け算語の値を見てみると、6 番目と 8 番目の値が高い値を示していることがわかります。
+このデータの重み付き相関係数は `0.568` ぐらいだったので、この 2 つの観測値の影響が大きそうです。
+
+```{r}
+cbind(1:n, y_new * x_new)
+```
+
+実際にデータを見てみると、 6 番と 8 番のデータは他の観測値と比べて関連性が強そうに見えます。
+
+```{r}
+cbind(y_new, x_new)
+```
+
+6 と 8 番目のデータを塗り分けてみるとわかりやすいですね。
+
+```{r}
+cols <- c(1, 1, 1, 1, 1, 3, 1, 3, 1, 1) + 1
+plot(y ~ x, col = cols, pch = 16)
+```
+
+以上で `y` と `x` について標準化が終わったので`standard` から `elnet` に帰ってくると今度は回帰係数の上限・下限についても標準化を行います。
+また `flmin` が 1 以上の場合は `vlam` を更新するのですが、 `flmin` は `lambda` が指定された場合に 1 が入り、そうでなければ $[0, 1)$ の実数が期待されるパラメータでした。
+なので `lambba` が指定された場合（= `flmin` が 1 のとき）に `vlam` が `y` の重み付き標準偏差で調整される事になります。
+この `vlam` は後続の処理（フィッティング）では `ulam` として渡されるものですが、`ulam` は `lambda` の指定がなければ 1 、指定があればその降順となるものでした。
+要するに `lambda` の大きさについても標準化するよ、という事のようですね。
+
+```{fotran}
+      ! jerr に 0 でない値が入っていると return
+      if(jerr.ne.0) return
+
+      ! cl は glmnet で cl = rbind(lower.limits, upper.limits) と定義される
+      ! 回帰係数の上限・加減
+      cl=cl/ys
+
+      ! 標準化の指定が 0 であれば以下はスキップ                     
+      if(isd .le. 0) goto 10091
+      
+      ! 説明変数ごとに標準偏差を乗じる
+      do 10101 j=1,ni
+      cl(:,j)=cl(:,j)*xs(j)
+10101 continue                                                          
+      continue                                                          
+10091 continue                                                          
+      
+      ! flmin は glmnet のなかで flmin = as.double(lambda.min.ratio) で定義される
+      ! ここで lambda.min.ratio = ifelse(nobs < nvars, 0.01, 1e-04)
+      if(flmin.ge.1.0) vlam=ulam/ys 
+```
+
+ではフィッティングです。
+ここで呼ばれる `elnet1` こそが {glmnet} の本体となり、回帰係数の計算はここで行われます。
+この中ではもうサブルーチンはほとんど呼ばれず、初期パラメータを取ってくるものとプログレスバーを表示するためのものだけです。
+ようやくたどり着きました、今回も長かったですね。
+
+```{fortran}
+      ! 3. フィッティング
+      ! 本体である elnet1 の呼び出し
+      call elnet1(parm,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,vlam,thr,maxi,xv,  lmu,ca,ia,nin,rsq,alm,nlp,jerr)
+```
+
+このサブルーチンは量はそこそこ（180行程度）なのですが、ループが込み入っていて紹介が長くなるので今回はここまでです。
+また次回。
+
+
+
+```{fortran}
+      ! jerr が 0 でなければ return
+      if(jerr.gt.0) return
+
+      ! 4. 後処理
+      ! lmu はデフォルトで 1 
+      ! lmu = integer(1)                                             
+      do 10111 k=1,lmu
+      ! alm は nlambda、lambdaの長さ（ただし double）
+      ! alm = double(nlam)                                                  
+      ! ys は y の重み調整済み標準偏差
+      alm(k)=ys*alm(k)                                                  
+      
+      ! nin は nlambda（ただし integer）
+      ! nin = integer(nlam)
+      nk=nin(k)
+
+      do 10121 l=1,nk                                                   
+      ! 回帰係数に y の重み調整済み標準偏差を乗じ、説明変数の重み調整済み標準偏差で除す
+      ! ここで lambda の個数だけ係数が格納されている
+      ! ca は変数の数 * lambda の数
+      ! ys は重み調整済み標準偏差
+      ! v は sqrt(w)
+      ! w は w = w/sum(w)
+      ca(l,k)=ys*ca(l,k)/xs(ia(l))                                      
+10121 continue
+
+      continue
+      ! a0 は elnet.r で以下のように定義： a0 = double(nlam)                                                          
+      a0(k)=0.0                                                         
+      if(intr.ne.0) a0(k)=ym-dot_product(ca(1:nk,k),xm(ia(1:nk))) ! y の重み付き平均 - y_hat の平均   
+10111 continue
+
+      continue                                                          
+      deallocate(xm,xs,g,ju,xv,vlam)                                    
+      return                                                            
+      end                                                               
+
+```
+
