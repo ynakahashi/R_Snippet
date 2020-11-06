@@ -1,5 +1,5 @@
 ---
-title: "glmnetをもう少し理解したい③"
+title: "glmnetをもう少し理解したい④"
 output: html_document
 ---
 
@@ -13,9 +13,7 @@ output: html_document
 
 ### `elnet1` の実装
 前回の記事で最後に触れた通り、 `elnet1` 自体は 180 行程度とそれほど大きくはないサブルーチンなのですが、多数のループが込み入っています。
-具体的には 9 つのループ処理（fortran なので do 文）があり、それらがネストした構造のなかで `goto` によって行き来しています。
-
-大まかな構造は以下の通りです（わかりやすいように R で書いてありますが、添字は統一してあります）。
+具体的には以下の通り 9 つのループ処理（fortran なので do 文）がネストした構造となっており、 しかも `goto` によって行き来しています（わかりやすいように R で書いてありますが、添字は統一してあります）。
 
 ```{r}
 # 1番目
@@ -47,10 +45,9 @@ for (m in 1:nlam) {
 }
 ```
 
-ではループを１つずつ見ていきましょう。
 
-#### （前処理と）ループ①
-
+#### 前処理
+まずはいつもの通り変数の定義ですが、それに加えて初期パラメータを取得するという処理が入ります。
 
 ```{fortran}
       subroutine elnet1(beta,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,ulam,th
@@ -80,80 +77,265 @@ for (m in 1:nlam) {
       if(jerr.ne.0) return
 ```
 
-beta はもともと parm として受け渡されたもので、これは elnet.r で parm = alpha として渡している。この alpha は glmnet.r で定義されたもの。L1 と L2 それぞれに対する罰則の配分。
+ここで `get_int_parms` はそれほど大きくないので全体を見てみましょう。
+以下のようなサブルーチンです：
+
+```{fortran}
+subroutine get_int_parms(sml,eps,big,mnlam,rsqmax,pmin,exmx,itrace)
+implicit double precision(a-h,o-z)                                
+data sml0,eps0,big0,mnlam0,rsqmax0,pmin0,exmx0,itrace0  /1.0d-5,1.0d-6,9.9d35,5,0.999,1.0d-9,250.0,0/  
+sml=sml0                                                          
+eps=eps0                                                          
+big=big0                                                          
+mnlam=mnlam0                                                      
+rsqmax=rsqmax0                                                    
+pmin=pmin0                                                        
+exmx=exmx0                                                        
+itrace=itrace0                                                    
+return                                                            
+entry chg_fract_dev(arg)                                          
+sml0=arg                                                          
+return                                                            
+entry chg_dev_max(arg)                                            
+rsqmax0=arg                                                       
+return                                                            
+entry chg_min_flmin(arg)                                          
+eps0=arg                                                          
+return                                                            
+entry chg_big(arg)                                                
+big0=arg                                                          
+return                                                            
+entry chg_min_lambdas(irg)                                        
+mnlam0=irg                                                        
+return                                                            
+entry chg_min_null_prob(arg)                                      
+pmin0=arg                                                         
+return                                                            
+entry chg_max_exp(arg)                                            
+exmx0=arg                                                         
+return                                                            
+entry chg_itrace(irg)                                             
+itrace0=irg                                                       
+return                                                            
+end
+```
+
+上から3行目の `data` 文は変数に初期値を与える fortran の記法のようで、`data` に続いて宣言した変数に対して `/` で挟んだ値を初期値として与えるようです。
+そのため `sml0` には `1.0d-5` が、 `eps0` には `1.0d-6` が入力されます。
+ここで `d` は倍精度の指数表記を表します。13行目の `entry` 以降は各変数について特定の値を指定するためのもののようです（`entry` の使い方がよくわからない。。）。
+
+続けていくつか変数に値を代入します。
+まずは `bta` ですが、代入している `beta` は元々 `parm` として渡されたもので、これは elnet.r で `parm = alpha` として渡していたものでした。さらにこの `alpha` は glmnet.r で定義されたもので、L1 と L2 それぞれに対する罰則の配分を決めるパラメータです：
+
+$ (1 − \alpha)/2 ||\beta||^2_2 + \alpha||\beta||_1 $
+
 
 ```{fortran}
       bta=beta
+```
+
+この `bta` を 1 から減じたものを `omb` としますが、この `omb` はすぐ下で定義される `alm` との乗算で `dem` を定義する（つまり `dem = alm * obm` ）ためだけに使われています。
+さらに `alm` はループの中で更新されながら最終的には `bta` との乗算によって `ab` となり、回帰係数の縮小に使われることになります。
+またその次の `alf` は `alm` の更新に使われますので、これらの変数がループの中で更新されつつ回帰係数の縮小に利用されるということになります（もちろん他にもあります）。
+
+```{fortran}
       omb=1.0-bta
       alm=0.0
       alf=1.0
 ```
 
-flmin が 1.0 以上の場合（lambda が指定されている場合）は以下をスキップして 10271 に移動
 
-eps と flmin の大きい方を eqs とする。 eps は get_int_parms で eps0 を受け取っており、 1.*0d-6 なので 0    
+以下のブロックでは `eqs` と `alf` を定義しますが、 `flmin` が 1.0以上であればスキップされるようです。
+この `flmin` というのは glmnet.r において罰則 `lambda` が指定されていれば 1 
+が、されていない時には `lambda.min.ratio` が入力される変数でした。
+`lambda.min.ratio` はデフォルトでは `lambda.min.ratio = ifelse(nobs < nvars, 0.01, 1e-04)` となっていますので 1 よりは小さい値が入りそうです。
+したがって以下のブロックは「 `lambda` が指定されていないときは `alf` を定義しよう」という処理になっています（ `eqs` はここしか出てきません）。
+
+その場合、 `eps` と `flmin` （=1）の大きい方を新たに `eqs` と定義しますが、この `eps`  は `get_int_parms` で `eps0` （1.0d-6 という小さい数）を受け取っていました。
+一方 `lambda.min.ratio` は先ほど述べたようにデフォルトでは `lambda.min.ratio = ifelse(nobs < nvars, 0.01, 1e-04)` となっていますので、もう少し大きい値となりそうです。
+したがって `eqs` は 0.01 or 1e-04 、 `alf` はそれの 1/(nlam-1) 乗となるようです。
 
 ```{fortran}
       if(flmin .ge. 1.0)goto 10271
       eqs=max(eps,flmin)
       alf=eqs**(1.0/(nlam-1))  ! alf を eqs の (1/(nlam-1)) で定義する
+```
 
+`flmin` が 1 以上である（ `lambda` が指定されている）場合は上記をスキップしてこちらにきます。`rsq` はそのまま残差平方和ですね。
+
+続く `a` は `elnet1` の中で重要な役割を担っているのでじっくりと見ていきましょう。
+実はこの `a` は（縮小された）回帰係数を格納する変数です。
+
+```{fortran}
 10271 continue
       ! パラメータの初期化
       rsq=0.0 ! 残差平方和
       a=0.0
+```
+
+この `a` がどうなるのか、フライングして先の処理を見てみましょう。
+`elnet1` の 70 行目前後に以下の処理があります：
+
+```{r}
+      ak=a(k)                                                           
+      u=g(k)+ak*xv(k)                                                   
+      v=abs(u)-vp(k)*ab                                                 
+      a(k)=0.0                                                          
+      if(v.gt.0.0) a(k)=max(cl(1,k),min(cl(2,k),sign(v,u)/(xv(k)+vp(k)*dem)))
+      if(a(k).eq.ak)goto 10371                                  
+```
+
+`ak` という変数に `a` の k 番目の値を渡しておき、 `u` と `v` を定義し、`a` の k 番目の値を 0 に更新した上で色んな値を参照しながら再度更新しています（この `u` や `v` は後で確認します）。
+最終的に `a` は以下のように `ao` という変数に代入されます（154 行目）：
+
+```{fortran}
+      if(nin.gt.0) ao(1:nin,m)=a(ia(1:nin))                             
+```
+
+この `ao` ですが、 `elnetu` の中で `elnet1` を呼び出すときには `ca` という引数として渡されています。
+
+```{fortran}
+# elnet1 で受け取る変数
+# lmu の次に ao がある
+subroutine elnet1(beta,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,ulam,th
+     *r,maxit,xv,  lmu,ao,ia,kin,rsqo,almo,nlp,jerr)
+
+# elnetu で elnet1 を call するときの引数
+# こちらは lmu の次に ca がある
+call elnet1(parm,ni,ju,vp,cl,g,no,ne,nx,x,nlam,flmin,vlam,thr,maxi,xv,  lmu,ca,ia,nin,rsq,alm,nlp,jerr)
+```
+
+この `ca` は `elnet.r` の中で `.Fortran("elnet", ...)` と call される際に定義される変数でした：
+
+```{r}
+else .Fortran("elnet", ka, parm = alpha, nobs, nvars, as.double(x), 
+        y, weights, jd, vp, cl, ne, nx, nlam, flmin, 
+        ulam, thresh, isd, intr, maxit, lmu = integer(1), 
+        a0 = double(nlam), 
+        # ここで ca が定義されている
+        ca = double(nx * nlam), 
+        ia = integer(nx), 
+        nin = integer(nlam),  rsq = double(nlam), alm = double(nlam), 
+        nlp = integer(1), jerr = integer(1), PACKAGE = "glmnet")
+```
+
+ここで `nx` は説明変数の数、 `nlam` は罰則 `lambda` の数なので、説明変数の数 * lambda の数のベクトルを定義しています（そしてそれが `elnet1` の中で `ao` として評価・格納される）。
+
+この `ca` は `elnet.r` の後続の処理において以下の箇所で抽出されます：
+
+```{r}
+outlist = getcoef(fit, nvars, nx, vnames)
+```
+
+ここで `glmnet:::getcoef` は以下の通りで、`fit` として返ってきたオブジェクトの `ca` そのものを `beta` に格納しています（ `ninmax` が 0 の場合は 0 のベクトルが返る）。
+
+```{r}
+# glmnet:::getcoef
+function (fit, nvars, nx, vnames) {
+    # ここまで省略
+    nin = fit$nin[seq(lmu)]
+    ninmax = max(nin)
+    # ここまで省略
+    if (ninmax > 0) {
+        # ここで ca を抽出している 
+        ca = matrix(fit$ca[seq(nx * lmu)], nx, lmu)[seq(ninmax), 
+            , drop = FALSE]
+        df = apply(abs(ca) > 0, 2, sum)
+        ja = fit$ia[seq(ninmax)]
+        oja = order(ja)
+        ja = rep(ja[oja], lmu)
+        ia = cumsum(c(1, rep(ninmax, lmu)))
+        # beta に格納する
+        beta = drop0(new("dgCMatrix", Dim = dd, Dimnames = list(vnames, 
+            stepnames), x = as.vector(ca[oja, ]), p = as.integer(ia - 
+            1), i = as.integer(ja - 1)))
+    }
+    else {
+        beta = zeromat(nvars, lmu, vnames, stepnames)
+        df = rep(0, lmu)
+    }
+    # ここも省略
+    list(a0 = a0, beta = beta, df = df, dim = dd, lambda = lam)
+}
+```
+
+これにいくつかの情報を追加したものが `glmnet` の返り値です。 `elnet1` において評価された `a` が `ao` に格納され、 `elnet` に `ca` として渡され、 `elnet.r` で `beta` に抽出・格納される流れが伝わりましたでしょうか。
+
+重要な変数を説明したところなので、以下ブロックで初期化している変数の詳細は出てきたときに説明するとして、さっさと次に進んでしまいましょう。
+
+```{fortran}
       mm=0
       nlp=0
-      nin=nlp ! nin はここでは 0
+      nin=nlp
       
       iz=0
       mnl=min(mnlam,nlam)
 ```
 
-! ここからがループの本体
-! 一番外側のループは lambda の個数（nlam）
-!! 以下のまとまりは： 
-!!! flmin が 1.0 より小さい場合（glmnet において lambda に指定がない場合）は goto 10301 なので alm = ulam(m) をスキップ
-!!! flmin が 1.0 以上の場合は alm = ulam(m) とし、10301 ~ 10331 の処理をスキップ
+
+#### ループ①（`alm` の更新）
+上記までで必要な変数の初期化が完了したので、以下よりループに入ります。
+一番外側のループは `lambda` の個数（ `nlam` ）に対して実行されますが、 `nlam` のデフォルトは 100 となっています（ `glmnet.r` ）。
+
+以下ではおおよそ `alm` を更新する処理を行うのですが、 `lambda` の指定の有無や、ループの回数によって `alm` に入力する値を変えています。
+
+まずは `lambda` の指定の有無で処理を分けます。以下のまとまりは `flmin` が 1.0 より小さい場合にスキップされますが、先ほど述べたように、 `flmin` は `glmnet.r` において `lambda` の指定がない場合に相当します。
+`lambda` の指定がある場合には `alm = ulam(m)` として `alm` を更新した上で、10291 までスキップするのですが、この 10291 は 2 番目のループの中にありますので、少し大きめのスキップとなるようです。
+なお `ulam` は `lambda` が指定されている場合、`lambda` の降順になっているため、ループの 1 回目であれば `lambda` の最大値が入ります。
 
 ```{fortran}
-      do 10281 m=1,nlam ! nlambda なので lambda の個数（デフォルトは 100）だけループ。 m はループのインデックス
+      do 10281 m=1,nlam ! nlambda なので lambda の個数だけループ
 
-      if(itrace.ne.0) call setpb(m-1)  ! プログレスバー     
+      if(itrace.ne.0) call setpb(m-1)  ! プログレスバー
       if(flmin .lt. 1.0)goto 10301
-      alm=ulam(m) ! flmin が 1.0 以上の場合は alm = ulam(m) とする。 glmnet.r で lambda の指定がない場合は ulam は 1 が入る。基本指定しないと思うので 1 。指定があれば 1 より大きい値もありうる。
-      
+      alm=ulam(m) ! flmin が 1.0 以上の場合は alm = ulam(m) とする
       goto 10291
-10301 if(m .le. 2)goto 10311 ! ループの１回目と２回目はここをスキップ   
-      alm=alm*alf ! ループの３回目からは alm を alf を乗じて 10311、10321、10341、10331 の処理をスキップ              
+```
+
+`lambda` の指定がなければ以下の処理に入るのですが、ここではループの回数によって `alm` に入力する値を変えています。
+具体的には、ループの 1 回目には `big` （9.9d35）という極端に大きな値を入力し、 2 回目には 0.0 を、3 回目以降は 元の値に `alf` を乗じたものを入力します。
+
+```{fortran}
+10301 if(m .le. 2)goto 10311 ! ループの１回目と２回目はここをスキップ
+      alm=alm*alf ! ループの３回目からは alm を alf を乗じる
       goto 10291
-10311 if(m .ne. 1)goto 10321 ! ループの２回目はここをスキップ                       
-      alm=big     ! ループの１回目は alm = 0.0 を big = 9.9d35（アホみたいに大きな値） にして 10321、10341の処理をスキップ   
+10311 if(m .ne. 1)goto 10321 ! ループの２回目はここをスキップ
+      alm=big     ! ループの１回目は alm = big(9.9d35) にする 
       goto 10331
 10321 continue
       alm=0.0     ! ループの２回目は alm を いったん 0 にする
 ```
 
+この `alf` は先ほど説明した通り `eqs^(1.0/(nlam-1))` として定義されますが、`eqs` が 0.01 or 1e-4 とすると、`nlambda` を 10 とした場合には以下のような数値になります：
+
+```{r}
+> 0.01^(1/10)
+[1] 0.6309573
+> 1e-4^(1.0/(10))
+[1] 0.3981072
+```
+
+つまり `alm` はだんだん絶対値が小さくなるわけですね。
+
 #### ループ②
+続いて 2 番目のループに入ります。ここでは各変数に対するループとなります。
+
+
+! ju は 各変数列において全く同じ値が入っていないかを確認したもの（chkvars で行われる）で、全く同じなら 0 となりスキップされる
+! vp は各変数に対する罰則の重み（デフォルトは 1） が入ったベクトル（vp = as.double(penalty.factor) in glmnet.r）
+
+! ここで alm と abs(g(j)) / vp(j) の max をとる。罰則を考慮した内積の最大値を取りたい。 g は j 番目の変数にバラツキがあるとき y と x の内積（共分散）を格納したもの。内積の絶対値を罰則で割ったものを alm とする。でも alm=0.0 としていて、 vp は [0,1) なので、要は内積が負なら 0、正なら内積をとるので [0, 内積] にしている。
 
 ```{fortran}
       ! ２番目のループ
       ! alm の更新
       do 10341 j=1,ni  ! ni は変数の数    
-      if(ju(j).eq.0)goto 10341  ! ju は 各変数列において全く同じ値が入っていないかを確認したもの（chkvars で行われる）で、全く同じなら 0 となりスキップされる
-      if(vp(j).le.0.0)goto 10341   ! vp は各変数に対する罰則の重み（デフォルトは 1） が入ったベクトル（vp = as.double(penalty.factor) in glmnet.r）
-      alm=max(alm,abs(g(j))/vp(j)) ! ここで alm と abs(g(j)) / vp(j) の max をとる。罰則を考慮した内積の最大値を取りたい。 g は j 番目の変数にバラツキがあるとき y と x の内積（共分散）を格納したもの。内積の絶対値を罰則で割ったものを alm とする。でも alm=0.0 としていて、 vp は [0,1) なので、要は内積が負なら 0、正なら内積をとるので [0, 内積] にしている。
+      if(ju(j).eq.0)goto 10341  
+      if(vp(j).le.0.0)goto 10341   
+      alm=max(alm,abs(g(j))/vp(j)) 
 10341 continue  ! ２番目のループここまで
 ```            
 
-
-#### ループ③
-##### ループ④
-##### ループ⑤
-#### ループ⑥
-##### ループ⑦
-#### ループ⑧
-#### ループ⑨
 
 
 ```{fortran}
@@ -169,7 +351,18 @@ eps と flmin の大きい方を eqs とする。 eps は get_int_parms で eps0
 10351 continue
       if(iz*jz.ne.0) goto 10360   ! iz = 0, jz = 1
       nlp=nlp+1  ! nlp は 0 だったので一番外側のループ（lambda）のカウンタになってる？
-      dlx=0.0                                                           
+      dlx=0.0
+```
+
+
+
+
+
+#### ループ③
+
+
+
+```{fortran}
       
       ! ３番目のループは本体
       ! ここで回帰係数を推定している
@@ -211,6 +404,22 @@ eps と flmin の大きい方を eqs とする。 eps は get_int_parms で eps0
       if(mm(k) .ne. 0)goto 10391 ! 10391 は４番目のループの先なので、 mm が 0 でなければ ４番目のループをスキップ
       nin=nin+1  ! mm(k) が 0 なら nin を +1 する。 おそらく、パラメータが 0 でないときに mm は 0 となる。                                                      
       if(nin.gt.nx)goto 10372 ! nx は非ゼロとする変数の上限なので、推定したパラメータ数がそれを越えると３番目のループを抜ける
+```
+
+
+##### ループ④
+##### ループ⑤
+#### ループ⑥
+##### ループ⑦
+#### ループ⑧
+#### ループ⑨
+
+
+
+
+
+
+```{fortran}
       
       ! ４番目のループ
       ! 分散共分散行列のようなものを作っている
