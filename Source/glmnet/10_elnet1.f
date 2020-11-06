@@ -30,7 +30,7 @@
       
       ! flmin が 1.0 以上の場合（lambda が指定されている場合）は以下をスキップして 10271 に移動
       if(flmin .ge. 1.0)goto 10271                                      
-      eqs=max(eps,flmin) ! eps と flmin の大きい方を eqs とする。 eps は get_int_parms で eps0 を受け取っており、 1.*0d-6 なので 0                                 
+      eqs=max(eps,flmin) ! eps と flmin の大きい方を eqs とする。 eps は get_int_parms で eps0 を受け取っており、 1.0d-6 なので 0.000001                                 
       alf=eqs**(1.0/(nlam-1))  ! alf を eqs の (1/(nlam-1)) で定義する                                         
 
 10271 continue
