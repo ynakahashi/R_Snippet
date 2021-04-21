@@ -10,18 +10,6 @@
       if(mm(k) .ne. 0)goto 10391 ! 10391 は４番目のループの先なので、 mm が 0 でなければ ４番目のループをスキップ
       nin=nin+1  ! mm(k) が 0 なら nin を +1 する。 おそらく、パラメータが 0 でないときに mm は 0 となる。                                                      
       if(nin.gt.nx)goto 10372 ! nx は非ゼロとする変数の上限なので、推定したパラメータ数がそれを越えると２番目のループを抜ける
-      do 10401 j=1,ni                                                   
-      if(ju(j).eq.0)goto 10401
-      if(mm(j) .eq. 0)goto 10421
-      c(j,nin)=c(k,mm(j))                                               
-      goto 10401                                                  
-10421 continue                                                          
-      if(j .ne. k)goto 10441  ! 変数が同一でなければ 10441 に飛ぶ                                          
-      c(j,nin)=xv(j) ! 同一だったらここ                                                   
-      goto 10401                                                        
-10441 continue                                                          
-      c(j,nin)=dot_product(x(:,j),x(:,k)) ! 同一でなかったら j と k の内積をとる                               
-10401 continue ! ４番目のループはここまで
       continue 
       mm(k)=nin
       ia(nin)=k ! 0 でないパラメータが推定された変数の位置                                                         
