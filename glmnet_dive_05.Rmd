@@ -334,7 +334,7 @@ $ \hat{\beta}^{EN}_{j} = \begin{cases} (\hat{\beta}^{OLS}_{j} - \lambda_{1})/(1+
 ```
 
 
-#### ループ⑨（）
+#### ループ⑨（回帰係数が推定された変数のカウント）
 以下では`elnet1`のここまでのループによって推定された回帰係数を確認し、0.0 ではない変数の数をカウントしています。改めて、`j`は変数、`m`は`lambda`のインデックスです。
 
 ```{fortran}
@@ -344,18 +344,24 @@ $ \hat{\beta}^{EN}_{j} = \begin{cases} (\hat{\beta}^{OLS}_{j} - \lambda_{1})/(1+
 10561 continue ! ９番目のループここまで 
 ```
 
+最後に`me`、`rsq`、`rsq0`の確認をし、問題なければ次の`lambda`に移ります。
 
 ```{fortran}
       continue
       if(me.gt.ne)goto 10282
       if(rsq-rsq0.lt.sml*rsq)goto 10282
       if(rsq.gt.rsqmax)goto 10282
-10281 continue ! lambda のループはここまで
+10281 continue ! １番目のループはここまで
 
 10282 continue
       deallocate(a,mm,c,da)
       return
       end
 ```
+
+
+#### 終わりに
+以上で`elnet1`は終了です。
+ここまで随分とかかりましたが、なんとか{glmnet}のメインの処理を最後まで追いかけることが出来ました（途中でわからない部分を飛ばしたりしましたが）。
 
 
